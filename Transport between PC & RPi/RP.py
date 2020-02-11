@@ -15,7 +15,7 @@ def UdpSendToPC(udp_socket, ip_remote, port_remote):
         send_data = msgpack.packb(i)
         udp_socket.sendto(send_data, (ip_remote, port_remote))
         i += 1
-        time.sleep(0.5)
+        time.sleep(1)
 
 
 def UdpRecvFromPC(udp_socket):
@@ -27,10 +27,10 @@ def UdpRecvFromPC(udp_socket):
 
 
 def main():
-    ip_local = '160.39.223.147'
+    ip_local = '160.39.222.206'
     port_local = 1001
 
-    ip_remote = '160.39.223.147'
+    ip_remote = '160.39.222.206'
     port_remote = 1000
 
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
