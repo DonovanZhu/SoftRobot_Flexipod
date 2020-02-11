@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
+'''
+This file is for testing the brushless DC motor: DJI M2006 P36 and its controller: DJI C610. Raspberry Pi 4 is used to send to and receive message from controller. Since Raspberrypi has no CAN bus interface,  a CANable pro chip is used to transfer message between CAN and serial. To know more information of DJI motor and its controller: 
+https://www.robomaster.com/zh-CN/products/components/general/M2006
+To understand more about script: https://python-can.readthedocs.io/en/master/
+For more information of CANable: https://canable.io/getting-started.html
+'''
+
 from __future__ import print_function
 import time
 import threading
