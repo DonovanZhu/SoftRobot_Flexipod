@@ -24,11 +24,11 @@ def send_cyclic(bus, msg, stop_event):
         bus.send(msg)
 
         # improve the current 1 unit every one second
-        msg.data[1] += 1
-        # avoiding the current too large
-        if msg.data[1] > 0x11:
+        if msg.data[1] == 0xff:
             msg.data[1] = 0x00
-        print(f"tx: {msg}")
+            msg.data[0] += 1
+        msg.data[1] += 1
+        print(str(msg.data[0]) + str(msg.data[1]))
         time.sleep(1)
     print("Stopped sending messages")
 
