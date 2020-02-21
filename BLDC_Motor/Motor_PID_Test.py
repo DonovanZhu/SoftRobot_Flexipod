@@ -12,6 +12,8 @@ import time
 import threading
 import can
 from can import Message
+from collections import deque
+from binascii import hexlify
 
 k_p = 0.0
 k_i = 0.0
