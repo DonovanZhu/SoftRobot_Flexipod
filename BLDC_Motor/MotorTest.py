@@ -55,6 +55,7 @@ def main():
             #Smaller and equal to 0x7FFF, rotating counter clockwise
             #Larger and equal to 0x8000,rotating clockwise
             #When current is 0x0000 or 0xffff, the motor is stop
+            #from -10A ~ 10A
             is_extended_id=False
         )
 
