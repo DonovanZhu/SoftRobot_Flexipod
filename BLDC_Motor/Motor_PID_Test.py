@@ -15,7 +15,7 @@ from can import Message
 from collections import deque
 from binascii import hexlify
 
-k_p = 0.0
+k_p = 0.03
 k_i = 0.0
 k_d = 0.0
 motors_que = deque(maxlen=2)
@@ -47,18 +47,16 @@ def send_cyclic(bus, msg, stop_event):
     while not stop_event.is_set():
         new_msg = motors_que.popleft()
         dt = new_msg.timestamp - former_msg.timestamp
-
         new_speed = str(hexlify(new_msg.data), "utf-8")
         new_speed = int(new_speed[4:8], 16)
         if new_speed >= speedDirectionBoundary:
-            new_speed = (maxBoundary - former_speed) / drive_ratio
+            new_speed = (maxBoundary - new_speed) / drive_ratio
         else:
             new_speed /= drive_ratio
-        new_error = desired_speed - new_speed
-
+        print(new_speed)
+        new_error = desire_speed - new_speed
         error += new_error
         v_command = k_p * new_error + k_i * error * dt + k_d * (new_error - former_error) / dt
-
         former_msg = new_msg
         former_error = new_error
         former_speed = new_speed
@@ -83,7 +81,7 @@ def send_cyclic(bus, msg, stop_event):
         bus.send(msg)
 
         # improve the current 1 unit every one second
-        time.sleep(1)
+        time.sleep(0.2)
 
 
 def receive(bus, stop_event):
@@ -91,8 +89,6 @@ def receive(bus, stop_event):
     """The loop for receiving."""
     while not stop_event.is_set():
         Motor_msg = bus.recv()
-        if Motor_msg is not None:
-            print("rx: {}".format(Motor_msg))
         motors_que.append(Motor_msg)
 
 
