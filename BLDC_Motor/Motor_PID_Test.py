@@ -37,6 +37,8 @@ def send_cyclic(bus, msg, stop_event):
     former_speed = int(former_speed[4:8], 16)
     if former_speed >= speedDirectionBoundary:
         former_speed = (maxBoundary - former_speed) / drive_ratio
+    else:
+        former_speed /= drive_ratio
     former_error = desire_speed - former_speed
     error = former_error
 
@@ -48,6 +50,8 @@ def send_cyclic(bus, msg, stop_event):
         new_speed = int(new_speed[4:8], 16)
         if new_speed >= speedDirectionBoundary:
             new_speed = (maxBoundary - former_speed) / drive_ratio
+        else:
+            new_speed /= drive_ratio
         new_error = desired_speed - new_speed
 
         error += new_error
