@@ -50,6 +50,11 @@ def main():
             # controller can id 0x200
             arbitration_id=0x200,
             data=[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            #Every two hex number stand for the high and low byte of current
+            # data[0] + data[1] = 0x0000, which means the current is 0x0000
+            #Smaller and equal to 0x7FFF, rotating counter clockwise
+            #Larger and equal to 0x8000,rotating clockwise
+            #When current is 0x0000 or 0xffff, the motor is stop
             is_extended_id=False
         )
 
