@@ -15,21 +15,21 @@ from can import Message
 from collections import deque
 from binascii import hexlify
 
-k_p = 0.03
-k_i = 0.0
-k_d = 0.0
-motors_que = deque(maxlen=2)
+k_p = 0.064
+k_i = 1.7
+k_d = 0.212
+motors_que = deque(maxlen = 2)
 speedDirectionBoundary = 32768
 maxBoundary = 65536
 drive_ratio = 36
-PID_H = 100
-PID_L = -100
+PID_H = 1000
+PID_L = -1000
 
 
 def send_cyclic(bus, msg, stop_event):
     """The loop for sending."""
     global motors_que
-    desire_speed = 60
+    desire_speed = 300
     start_time = time.time()
     while True:
         if len(motors_que) > 1:
@@ -38,7 +38,7 @@ def send_cyclic(bus, msg, stop_event):
     former_speed = str(hexlify(former_msg.data), "utf-8")
     former_speed = int(former_speed[4:8], 16)
     if former_speed >= speedDirectionBoundary:
-        former_speed = (maxBoundary - former_speed) / drive_ratio
+        former_speed = -(maxBoundary - former_speed) / drive_ratio
     else:
         former_speed /= drive_ratio
     former_error = desire_speed - former_speed
@@ -50,28 +50,32 @@ def send_cyclic(bus, msg, stop_event):
         new_speed = str(hexlify(new_msg.data), "utf-8")
         new_speed = int(new_speed[4:8], 16)
         if new_speed >= speedDirectionBoundary:
-            new_speed = (maxBoundary - new_speed) / drive_ratio
+            new_speed = - (maxBoundary - new_speed) / drive_ratio
         else:
             new_speed /= drive_ratio
-        print(new_speed)
+        print("speed:",new_speed)
         new_error = desire_speed - new_speed
         error += new_error
-        v_command = k_p * new_error + k_i * error * dt + k_d * (new_error - former_error) / dt
+        v_command = k_p * (new_error + error * dt / k_i + k_d * (new_error - former_error) / dt)
+
         former_msg = new_msg
         former_error = new_error
         former_speed = new_speed
+        print("command",v_command)
 
-        if v_command > 0:
+        if v_command >= 0:
             if v_command > PID_H:
                 v_command = PID_H
             current_command_H, current_command_L = divmod(int((v_command / PID_H) * (speedDirectionBoundary - 1)), 0x100)
             msg.data[0] = current_command_H
             msg.data[1] = current_command_L
+            print(msg.data[0], msg.data[1])
+            print(current_command_H, current_command_L)
         elif v_command < 0:
             if v_command < PID_L:
                 v_command = PID_L
             current_command = int((v_command / PID_L) * (speedDirectionBoundary - 1))
-            current_command += 0x8000
+            current_command = 0xffff - current_command
             current_command_H, current_command_L = divmod(current_command, 0x100)
             msg.data[0] = current_command_H
             msg.data[1] = current_command_L
@@ -81,7 +85,7 @@ def send_cyclic(bus, msg, stop_event):
         bus.send(msg)
 
         # improve the current 1 unit every one second
-        time.sleep(0.2)
+        time.sleep(0.02)
 
 
 def receive(bus, stop_event):
