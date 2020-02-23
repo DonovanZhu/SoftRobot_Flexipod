@@ -40,25 +40,26 @@ def UdpRecvFromPC(udp_socket):
     global speed
     while True:
         recv_data = udp_socket.recv(1024)
-        speed_msg = bytes.decode(msgpack.unpackb(recv_data))
+        speed_msg = msgpack.unpackb(recv_data)
         motor_index = 0
-        speed = ['', '', '', '']
+        speed = ['','','','']
         for speed_index in speed_msg:
             if speed_index != ',':
                 speed[motor_index] += speed_index
             else:
                 motor_index += 1
-                continue
+        print(speed)
 
 
 def receive(bus, stop_event):
-    global motor_q
+    global motor_q, motors_que1, motors_que2, motors_que3, motors_que4
     while not stop_event.is_set():
         rx_msg = bus.recv()
         msg_sending = str(hexlify(rx_msg.data), "utf-8")
         if rx_msg is not None:
             if rx_msg.arbitration_id == 513:
                 motors_que1.append(rx_msg)
+                
                 msg_sending += '1'
             elif rx_msg.arbitration_id == 514:
                 motors_que2.append(rx_msg)
@@ -74,8 +75,10 @@ def receive(bus, stop_event):
 
 
 def pid(new_msg, desire_speed, former_error, error, dt):
+    global motors_que1
     new_speed = str(hexlify(new_msg.data), "utf-8")
     new_speed = int(new_speed[4:8], 16)
+    # print(new_speed)
     current_command_H = 0
     current_command_L = 0
     if new_speed >= speedDirectionBoundary:
@@ -103,7 +106,10 @@ def pid(new_msg, desire_speed, former_error, error, dt):
 
 def send_cyclic_motor1(bus, msg):
     global motors_que1
-    desire_speed = int(speed[0])
+    while True:
+        if speed[0] != '':
+            desire_speed = int(speed[0])
+            break
     start_time = time.time()
     while True:
         if len(motors_que1) > 1:
@@ -119,12 +125,14 @@ def send_cyclic_motor1(bus, msg):
     error = former_error
 
     while True:
+        desire_speed = int(speed[0])
         while True:
             if len(motors_que1) > 1:
                 new_msg = motors_que1.popleft()
                 break
         dt = new_msg.timestamp - former_msg.timestamp
-        print(dt)
+        print(new_msg)
+        # print(dt)
         msg.data[0], msg.data[1], former_msg, former_error = pid(new_msg, desire_speed, former_error, error, dt)
 
         msg.timestamp = time.time() - start_time
@@ -223,10 +231,10 @@ def send_cyclic_motor4(bus, msg):
 
 
 def main():
-    ip_local = '160.39.159.127'
+    ip_local = '192.168.0.76'
     port_local = 1001
 
-    ip_remote = '160.39.159.127'
+    ip_remote = '192.168.0.67'
     port_remote = 1000
 
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
