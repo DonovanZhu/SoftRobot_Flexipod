@@ -15,7 +15,7 @@ from can import Message
 from binascii import hexlify
 import msgpack
 import numpy as np
-np.set_printoptions(suppress=True, )
+np.set_printoptions(suppress=True)
 
 k_p = 0.07
 k_i = 1.65
