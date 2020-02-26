@@ -39,8 +39,8 @@ def receive_send(bus, msg):
             i += 1
             if len(former_msg) == 4:
                 break
-    former_speed = np.array([0.0, 0.0, 0.0, 0.0])
-    former_time = np.array([0.0, 0.0, 0.0, 0.0])
+    former_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    former_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
     
     i = 0
     for mesg in former_msg:
@@ -55,8 +55,8 @@ def receive_send(bus, msg):
     former_error = desire_speed - former_speed
     error = former_error
     
-    new_speed = np.array([0.0, 0.0, 0.0, 0.0])
-    new_time = np.array([0.0, 0.0, 0.0, 0.0])
+    new_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    new_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
     new_msg = former_msg.copy()
     while True:
         ID_set.clear()
@@ -98,8 +98,12 @@ def receive_send(bus, msg):
             i += 2
         
         # msg.data = [0,0,0,0,0,0,0,0]
-        former_time = new_time.copy()
-        former_error = new_error.copy()
+        former_time = new_time[:]
+        former_error = new_error[:]
+        # former_time = new_time[[1, 2, 3, 4]]
+        # former_error = new_error[[1, 2, 3, 4]]
+        # former_time = new_time.copy()
+        # former_error = new_error.copy()
         bus.send(msg)
 
 def main():
