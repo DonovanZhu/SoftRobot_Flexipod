@@ -8,14 +8,16 @@ For more information of CANable: https://canable.io/getting-started.html
 '''
 
 from __future__ import print_function
+import socket
 import time
 import threading
 import can
 from can import Message
 from binascii import hexlify
+from collections import deque
 import msgpack
 import numpy as np
-np.set_printoptions(suppress=True, )
+np.set_printoptions(suppress=True)
 
 k_p = 0.07
 k_i = 0.9
@@ -28,10 +30,21 @@ maxBoundary = 65536
 drive_ratio = 36
 PID_H = 1000
 PID_L = -1000
-desire_speed = np.array([100, 150, 200 ,250])
+desire_speed = np.array([0, 0, 0, 0])
+command_que = deque(maxlen=4)
+speed_que = deque(maxlen=4)
 
-def receive_send(bus, msg):
+def udp_Receive_FromPC(udp_socket):
     global desire_speed
+    while True:
+        recv_data = udp_socket.recv(1024)
+        command = np.array(msgpack.unpackb(recv_data))
+        desire_speed = command[[0, 1, 2, 3]]
+        # command_que.append(desire_speed)
+    
+    
+def receive_send(bus, msg):
+    global desire_speed, speed_que
     ID_set = set()
     former_msg = []
     i = 0
@@ -46,9 +59,11 @@ def receive_send(bus, msg):
     former_time = np.zeros(4,dtype=np.float64)
     
     i = 0
+    bytes_to_int = np.dtype(np.uint16)
+    bytes_to_int = bytes_to_int.newbyteorder('>')
     for mesg in former_msg:
-        # print(np.frombuffer(mesg.data, dtype=np.uint8))
-        f_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
+        f_speed = np.frombuffer(mesg.data, dtype=bytes_to_int)[1]
+        # f_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
         if f_speed >= speedDirectionBoundary:
             f_speed = -(maxBoundary - f_speed) / drive_ratio
         else:
@@ -70,9 +85,10 @@ def receive_send(bus, msg):
             new_msg[recv_msg.arbitration_id - 513] = recv_msg
             if len(ID_set) == 4:
                 break
+            
         i = 0
         for mesg in new_msg:
-            n_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
+            n_speed = np.frombuffer(mesg.data, dtype=bytes_to_int)[1]
             if n_speed >= speedDirectionBoundary:
                 n_speed = -(maxBoundary - n_speed) / drive_ratio
             else:
@@ -81,39 +97,43 @@ def receive_send(bus, msg):
             new_time[i] = mesg.timestamp
             i += 1
         
-        # print(new_speed)
+        speed_que.append(new_speed)
         dt = new_time - former_time
         print(dt)
+        # print(dt)
         new_error = desire_speed - new_speed
         error += new_error
         
         v_command = k_p * (new_error + error * dt / k_i + k_d * (new_error - former_error) / dt)
         
-        former_time = new_time[:]
-        former_error = new_error[:]
+        former_time = new_time[[0, 1, 2, 3]]
+        former_error = new_error[[0, 1, 2, 3]]
+        
+        
+        v_command[v_command > PID_H] = PID_H
+        v_command[v_command < PID_L] = PID_L
+        v_command[v_command > 0] = (v_command[v_command > 0] / PID_H) * (speedDirectionBoundary - 1)
+        v_command[v_command < 0] = 65535 - (v_command[v_command < 0] / PID_L) * (speedDirectionBoundary - 1)
         
         i = 0
         for r_speed in v_command:
-            if r_speed >= 0:
-                if r_speed > PID_H:
-                    r_speed = PID_H
-                msg.data[i], msg.data[i + 1] = divmod(int((r_speed / PID_H) * (speedDirectionBoundary - 1)), 0x100)
-            elif r_speed < 0:
-                if r_speed < PID_L:
-                    r_speed = PID_L
-                current_command = int((r_speed / PID_L) * (speedDirectionBoundary - 1))
-                current_command = 65535 - current_command
-                msg.data[i], msg.data[i + 1] = divmod(current_command, 0x100)
+            msg.data[i], msg.data[i + 1] = divmod(int(r_speed), 0x100)
             i += 2
             
-        # msg.data = [0,0,0,0,0,0,0,0]
-        # former_time = new_time[[0, 1, 2, 3]]
-        # former_error = new_error[[0, 1, 2, 3]]
-        # former_time = new_time.copy()
-        # former_error = new_error.copy()
         bus.send(msg)
 
 def main():
+    global desire_speed, speed_que
+    
+    ip_local = '192.168.0.77'
+    port_local = 1001
+
+    ip_remote = '192.168.0.67'
+    port_remote = 1000
+
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.bind((ip_local, port_local))
+    
     """Control the sender and receiver."""
     with can.interface.Bus(bustype='slcan', channel='/dev/ttyACM0', bitrate=1000000) as bus:
         tx_msg: Message = can.Message(
@@ -124,18 +144,20 @@ def main():
         )
 
         # Thread for sending and receiving messages
-        '''
-        stop_event = threading.Event()
 
-        t_send_cyclic = threading.Thread(target=send_cyclic, args=(bus, tx_msg, stop_event))
-
-        t_receive = threading.Thread(target=receive, args=(bus, stop_event))
-        t_receive.start()
-        t_send_cyclic.start()
+        t_receive_send = threading.Thread(target=receive_send, args=(bus, tx_msg))
+        t_receive_udp = threading.Thread(target=udp_Receive_FromPC, args=(udp_socket,))
+        t_receive_send.start()
+        t_receive_udp.start()
+        
+        # Send msg to PC:
         '''
-        
-        receive_send(bus, tx_msg)
-        
+        while True:
+            if len(speed_que) > 3:
+                send_data = speed_que.popleft()
+                send_data = msgpack.packb(send_data.tolist())
+                udp_socket.sendto(send_data, (ip_remote, port_remote))    
+        '''
         try:
             while True:
                 time.sleep(0)  # yield
