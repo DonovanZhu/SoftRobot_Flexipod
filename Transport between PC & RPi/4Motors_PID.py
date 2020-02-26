@@ -15,11 +15,14 @@ from can import Message
 from binascii import hexlify
 import msgpack
 import numpy as np
-np.set_printoptions(suppress=True)
+np.set_printoptions(suppress=True, )
 
 k_p = 0.07
-k_i = 1.65
-k_d = 0.3
+k_i = 0.9
+k_d = 0.25
+# k_p = 0.07
+# k_i = 1.65
+# k_d = 0.3
 speedDirectionBoundary = 32768
 maxBoundary = 65536
 drive_ratio = 36
@@ -39,13 +42,12 @@ def receive_send(bus, msg):
             i += 1
             if len(former_msg) == 4:
                 break
-    former_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
-    former_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    former_speed = np.zeros(4,dtype=np.float64)
+    former_time = np.zeros(4,dtype=np.float64)
     
     i = 0
     for mesg in former_msg:
-    # Try: np.fromstring(mesg.data, dtype=np.uint8)
-    # ref: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.fromstring.html
+        # print(np.frombuffer(mesg.data, dtype=np.uint8))
         f_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
         if f_speed >= speedDirectionBoundary:
             f_speed = -(maxBoundary - f_speed) / drive_ratio
@@ -57,11 +59,8 @@ def receive_send(bus, msg):
     former_error = desire_speed - former_speed
     error = former_error
     
-    # new_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
-    # new_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
-    new_speed = np.zeros(4,dtype=float)
-    new_time = np.zeros(4,dtype=float)
-    
+    new_speed = np.zeros(4,dtype=np.float64)
+    new_time = np.zeros(4,dtype=np.float64)
     new_msg = former_msg.copy()
     while True:
         ID_set.clear()
@@ -73,7 +72,6 @@ def receive_send(bus, msg):
                 break
         i = 0
         for mesg in new_msg:
-        # same, see above
             n_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
             if n_speed >= speedDirectionBoundary:
                 n_speed = -(maxBoundary - n_speed) / drive_ratio
@@ -83,6 +81,7 @@ def receive_send(bus, msg):
             new_time[i] = mesg.timestamp
             i += 1
         
+        # print(new_speed)
         dt = new_time - former_time
         print(dt)
         new_error = desire_speed - new_speed
@@ -95,7 +94,6 @@ def receive_send(bus, msg):
         
         i = 0
         for r_speed in v_command:
-        # this can be done using numpy indexing, see numpy reference
             if r_speed >= 0:
                 if r_speed > PID_H:
                     r_speed = PID_H
@@ -107,12 +105,10 @@ def receive_send(bus, msg):
                 current_command = 65535 - current_command
                 msg.data[i], msg.data[i + 1] = divmod(current_command, 0x100)
             i += 2
-        
+            
         # msg.data = [0,0,0,0,0,0,0,0]
-        # former_time = new_time[:]
-        # former_error = new_error[:]
-        # former_time = new_time[[1, 2, 3, 4]]
-        # former_error = new_error[[1, 2, 3, 4]]
+        # former_time = new_time[[0, 1, 2, 3]]
+        # former_error = new_error[[0, 1, 2, 3]]
         # former_time = new_time.copy()
         # former_error = new_error.copy()
         bus.send(msg)
