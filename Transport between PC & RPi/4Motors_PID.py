@@ -44,6 +44,8 @@ def receive_send(bus, msg):
     
     i = 0
     for mesg in former_msg:
+    # Try: np.fromstring(mesg.data, dtype=np.uint8)
+    # ref: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.fromstring.html
         f_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
         if f_speed >= speedDirectionBoundary:
             f_speed = -(maxBoundary - f_speed) / drive_ratio
@@ -55,8 +57,11 @@ def receive_send(bus, msg):
     former_error = desire_speed - former_speed
     error = former_error
     
-    new_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
-    new_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    # new_speed = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    # new_time = np.array([0.0, 0.0, 0.0, 0.0], dtype = float)
+    new_speed = np.zeros(4,dtype=float)
+    new_time = np.zeros(4,dtype=float)
+    
     new_msg = former_msg.copy()
     while True:
         ID_set.clear()
@@ -68,6 +73,7 @@ def receive_send(bus, msg):
                 break
         i = 0
         for mesg in new_msg:
+        # same, see above
             n_speed = int(str(hexlify(mesg.data), "utf-8")[4:8],16)
             if n_speed >= speedDirectionBoundary:
                 n_speed = -(maxBoundary - n_speed) / drive_ratio
@@ -83,8 +89,13 @@ def receive_send(bus, msg):
         error += new_error
         
         v_command = k_p * (new_error + error * dt / k_i + k_d * (new_error - former_error) / dt)
+        
+        former_time = new_time[:]
+        former_error = new_error[:]
+        
         i = 0
         for r_speed in v_command:
+        # this can be done using numpy indexing, see numpy reference
             if r_speed >= 0:
                 if r_speed > PID_H:
                     r_speed = PID_H
@@ -98,8 +109,8 @@ def receive_send(bus, msg):
             i += 2
         
         # msg.data = [0,0,0,0,0,0,0,0]
-        former_time = new_time[:]
-        former_error = new_error[:]
+        # former_time = new_time[:]
+        # former_error = new_error[:]
         # former_time = new_time[[1, 2, 3, 4]]
         # former_error = new_error[[1, 2, 3, 4]]
         # former_time = new_time.copy()
