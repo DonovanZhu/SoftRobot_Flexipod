@@ -5,20 +5,32 @@ from collections import deque
 import tkinter as tk
 from tkinter import ttk
 from tkinter import scrolledtext
+import numpy as np
 
 motors_que = deque()
-current_command = ''
+speed_command = ''
 is_write = False
 
 
 def UdpSendToRP(udp_socket, ip_remote, port_remote):
-    global current_command
+    global speed_command
     global is_write
     while True:
-        if len(current_command) != 0 and is_write:
-            print(current_command, type(current_command))
-            send_data = msgpack.packb(current_command)
-            print(send_data, type(send_data))
+        speed_msg = ['', '', '', '']
+        msg_index = 0
+        if len(speed_command) != 0 and is_write:
+            for i in speed_command:
+                if i != ',':
+                    speed_msg[msg_index] += i
+                else:
+                    msg_index += 1
+            msg_index = 0
+            for j in speed_msg:
+                speed_msg[msg_index] = int(j)
+                msg_index += 1
+
+            print(speed_msg)
+            send_data = msgpack.packb(speed_msg)
             udp_socket.sendto(send_data, (ip_remote, port_remote))
             is_write = False
 
@@ -35,47 +47,69 @@ def RecvData():
     while True:
         if len(motors_que) != 0:
             Display_data = motors_que.popleft()
+            Receive_Window_1.insert("end", "Rpm" + str(Display_data[0]) + '\n')
+            Receive_Window_1.see("end")
+            Receive_Window_2.insert("end", "Rpm" + str(Display_data[1]) + '\n')
+            Receive_Window_2.see("end")
+            Receive_Window_3.insert("end", "Rpm" + str(Display_data[2]) + '\n')
+            Receive_Window_3.see("end")
+            Receive_Window_4.insert("end", "Rpm" + str(Display_data[3]) + '\n')
+            Receive_Window_4.see("end")
+            '''
             # Display_data = str(Display_data, encoding="gbk")
             Display_data = str(Display_data, encoding="utf-8")
+            Angle = int(Display_data[0:4], 16)
+            Rpm = int(Display_data[4:8], 16)
+            Current = int(Display_data[8:12], 16)
+            Angle = Angle / 0xffff * 360
+            if Rpm < 0x8000:
+                Rpm = Rpm / 36
+            else:
+                Rpm = - (0xffff - Rpm) / 36
+            if Current < 0x8000:
+                Current = Current / 0x7fff * 10
+            else:
+                Current = - (0xffff - Current) / 0x7fff * 10
             if Display_data[-1] == '1':
-                Receive_Window_1.insert("end", "Rotation Angle:" + Display_data[0: 4]
-                                        + "  " + "Rpm:" + Display_data[4: 8]
-                                        + "  " + "Torque:" + Display_data[8: 12] + '\n')
+                Receive_Window_1.insert("end", "Rotation Angle:" + str(Angle)
+                                        + "  " + "Rpm:" + str(Rpm)
+                                        + "  " + "Torque:" + str(Current) + '\n')
                 Receive_Window_1.see("end")
             elif Display_data[-1] == '2':
-                Receive_Window_2.insert("end", "Rotation Angle:" + Display_data[0: 4]
-                                        + "  " + "Rpm:" + Display_data[4: 8]
-                                        + "  " + "Torque:" + Display_data[8: 12] + '\n')
+                Receive_Window_2.insert("end", "Rotation Angle:" + str(Angle)
+                                        + "  " + "Rpm:" + str(Rpm)
+                                        + "  " + "Torque:" + str(Current) + '\n')
                 Receive_Window_2.see("end")
             elif Display_data[-1] == '3':
-                Receive_Window_3.insert("end", "Rotation Angle:" + Display_data[0: 4]
-                                        + "  " + "Rpm:" + Display_data[4: 8]
-                                        + "  " + "Torque:" + Display_data[8: 12] + '\n')
+                Receive_Window_3.insert("end", "Rotation Angle:" + str(Angle)
+                                        + "  " + "Rpm:" + str(Rpm)
+                                        + "  " + "Torque:" + str(Current) + '\n')
                 Receive_Window_3.see("end")
             elif Display_data[-1] == '4':
-                Receive_Window_4.insert("end", "Rotation Angle:" + Display_data[0: 4]
-                                        + "  " + "Rpm:" + Display_data[4: 8]
-                                        + "  " + "Torque:" + Display_data[8: 12] + '\n')
+                Receive_Window_4.insert("end", "Rotation Angle:" + str(Angle)
+                                        + "  " + "Rpm:" + str(Rpm)
+                                        + "  " + "Torque:" + str(Current) + '\n')
                 Receive_Window_4.see("end")
+            '''
         else:
             pass
 
 
 def WriteData(InputData, Info):
-    global current_command
+    global speed_command
     global is_write
-    current_command = InputData.get()
+    speed_command = InputData.get()
     is_write = True
-    Info.insert("end", 'Command:' + str(current_command) + '\n')
+    Info.insert("end", 'Command:' + str(speed_command) + "Rpm" + '\n')
     Info.see("end")
 
 
 def main():
     # put argument at top
-    ip_local = '192.168.0.231'
+    ip_local = '160.39.222.46'
     port_local = 1000
 
-    ip_remote = '192.168.0.27'
+    ip_remote = '192.168.0.77'
     # ip_remote = '192.168.0.231'
     port_remote = 1001
 
