@@ -10,18 +10,19 @@ For more information of CANable: https://canable.io/getting-started.html
 from __future__ import print_function
 import socket
 import time
-import threading
+# import threading
 import can
 from can import Message
 from binascii import hexlify
 from collections import deque
 import msgpack
 import numpy as np
+from multiprocessing import Process,Queue
 np.set_printoptions(suppress=True)
 
-k_p = 0.07
-k_i = 0.9
-k_d = 0.25
+k_p = 0.1
+k_i = 10
+k_d = 0.0
 # k_p = 0.07
 # k_i = 1.65
 # k_d = 0.3
@@ -30,21 +31,25 @@ maxBoundary = 65536
 drive_ratio = 36
 PID_H = 1000
 PID_L = -1000
-desire_speed = np.array([0, 0, 0, 0])
+desire_speed = Queue()
 command_que = deque(maxlen=4)
-speed_que = deque(maxlen=4)
+speed_que = Queue()
 
 def udp_Receive_FromPC(udp_socket):
-    global desire_speed
     while True:
         recv_data = udp_socket.recv(1024)
-        command = np.array(msgpack.unpackb(recv_data))
-        desire_speed = command[[0, 1, 2, 3]]
+        desire_speed.put(np.array(msgpack.unpackb(recv_data)))
         # command_que.append(desire_speed)
+        
+def udp_Send_ToPC(udp_socket,ip_remote, port_remote):
+    while True:
+        if not speed_que.empty():
+            que = speed_que.get()
+            send_data = msgpack.packb(que.tolist())
+            udp_socket.sendto(send_data, (ip_remote, port_remote))  
     
     
 def receive_send(bus, msg):
-    global desire_speed, speed_que
     ID_set = set()
     former_msg = []
     i = 0
@@ -71,13 +76,16 @@ def receive_send(bus, msg):
         former_speed[i] = f_speed
         former_time[i] = mesg.timestamp
         i += 1
-    former_error = desire_speed - former_speed
+    former_error = np.array([0.0, 0.0, 0.0, 0.0])
     error = former_error
     
     new_speed = np.zeros(4,dtype=np.float64)
     new_time = np.zeros(4,dtype=np.float64)
     new_msg = former_msg.copy()
+    d_speed = np.array([0, 0, 0, 0])
     while True:
+        if not desire_speed.empty():
+            d_speed = desire_speed.get()
         ID_set.clear()
         while True:
             recv_msg = bus.recv()
@@ -97,11 +105,11 @@ def receive_send(bus, msg):
             new_time[i] = mesg.timestamp
             i += 1
         
-        speed_que.append(new_speed)
+        speed_que.put(new_speed[[0, 1, 2, 3]])
         dt = new_time - former_time
-        print(dt)
+        print(new_speed)
         # print(dt)
-        new_error = desire_speed - new_speed
+        new_error = d_speed - new_speed
         error += new_error
         
         v_command = k_p * (new_error + error * dt / k_i + k_d * (new_error - former_error) / dt)
@@ -123,8 +131,7 @@ def receive_send(bus, msg):
         bus.send(msg)
 
 def main():
-    global desire_speed, speed_que
-    
+
     ip_local = '192.168.0.77'
     port_local = 1001
 
@@ -133,7 +140,7 @@ def main():
 
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind((ip_local, port_local))
-    
+
     """Control the sender and receiver."""
     with can.interface.Bus(bustype='slcan', channel='/dev/ttyACM0', bitrate=1000000) as bus:
         tx_msg: Message = can.Message(
@@ -145,12 +152,12 @@ def main():
 
         # Thread for sending and receiving messages
 
-        t_receive_send = threading.Thread(target=receive_send, args=(bus, tx_msg))
-        t_receive_udp = threading.Thread(target=udp_Receive_FromPC, args=(udp_socket,))
-        t_receive_send.start()
+        t_receive_recv = Process(target=receive_send, args=(bus, tx_msg))
+        t_receive_udp = Process(target=udp_Receive_FromPC, args=(udp_socket,))
+        t_send_udp = Process(target=udp_Send_ToPC, args=(udp_socket,ip_remote, port_remote))
+        t_receive_recv.start()
         t_receive_udp.start()
-        
-        # Send msg to PC:
+        t_send_udp.start()
         '''
         while True:
             if len(speed_que) > 3:
