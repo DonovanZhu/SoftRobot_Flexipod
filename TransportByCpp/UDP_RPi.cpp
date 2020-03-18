@@ -20,14 +20,13 @@ void recv_from_PC()
 
 	// Start WinSock
 	int wsOk = WSAStartup(version, &data);
+
 	if (wsOk != 0)
 	{
 		cout << "Can't start Winsock! " << wsOk;
 		return;
 	}
 
-	// Create a socket, notice that it is a user datagram socket (UDP)
-	// AF_INET/AF_INET6: IPV4/IPV6 | SOCK_DGRAM/SOCK_STREAM: UDP/TCP | 0: default protocol
 	SOCKET in = socket(AF_INET, SOCK_DGRAM, 0);
 
 	// Create a server hint structure for the server
@@ -36,38 +35,28 @@ void recv_from_PC()
 	serverHint.sin_family = AF_INET; // Address format is IPv4
 	serverHint.sin_port = htons(55000); // Convert from little to big endian
 
-	// Try and bind the socket to the IP and port
-	/*
 	if (bind(in, (sockaddr*)&serverHint, sizeof(serverHint)) == SOCKET_ERROR)
 	{
 		cout << "Can't bind socket! " << WSAGetLastError() << endl;
 		return;
-	}*/
+	}
 
 	sockaddr_in client; // Use to hold the client information (port / ip address)
 	int clientLength = sizeof(client); // The size of the client information
 
 	char buf[1024];
-
-	// Enter a loop
 	int bytesIn;
+	char clientIp[256];
 	while (true)
 	{
-		ZeroMemory(&client, clientLength); // Clear the client structure
-		ZeroMemory(buf, 1024); // Clear the receive buffer
+
+		//ZeroMemory(&client, clientLength); // Clear the client structure
+		//ZeroMemory(buf, 1024); // Clear the receive buffer
 
 		// Wait for message
 		bytesIn = recvfrom(in, buf, 1024, 0, (sockaddr*)&client, &clientLength);
-		/*
-		if (bytesIn == SOCKET_ERROR)
-		{
-			cout << "Error receiving from client " << WSAGetLastError() << endl;
-			continue;
-		}*/
 
-		// Display message and client info
-		char clientIp[256]; // Create enough space to convert the address byte array
-		ZeroMemory(clientIp, 256); // to string of characters
+		//ZeroMemory(clientIp, 256); // to string of characters
 
 		// Convert from byte array to chars
 		inet_ntop(AF_INET, &client.sin_addr, clientIp, 256);
@@ -113,14 +102,8 @@ void send_to_PC()
 	{
 		s = to_string(x);
 		sendOk = sendto(out, s.c_str(), s.size() + 1, 0, (sockaddr*)&server, sizeof(server));
-		cout << "send:" << x << endl;
+		//cout << "send:" << x << endl;
 		x++;
-		//Sleep(1000);
-		/*
-		if (sendOk == SOCKET_ERROR)
-		{
-			cout << "That didn't work! " << WSAGetLastError() << endl;
-		}*/
 	}
 	closesocket(out);
 
@@ -129,8 +112,9 @@ void send_to_PC()
 
 void main()
 {
-	thread send(send_to_PC);
 	thread recv(recv_from_PC);
-	send.join();
+	thread send(send_to_PC);
 	recv.join();
+	send.join();
+
 }
