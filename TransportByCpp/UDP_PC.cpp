@@ -37,41 +37,31 @@ void recv_from_RPi()
 	serverHint.sin_port = htons(54000); // Convert from little to big endian
 
 	// Try and bind the socket to the IP and port
-	/*
+
 	if (bind(in, (sockaddr*)&serverHint, sizeof(serverHint)) == SOCKET_ERROR)
 	{
 		cout << "Can't bind socket! " << WSAGetLastError() << endl;
 		return;
-	}*/
+	}
 
 	sockaddr_in client; // Use to hold the client information (port / ip address)
 	int clientLength = sizeof(client); // The size of the client information
 
 	char buf[1024];
-
+	char clientIp[256];
+	int bytesIn;
 	// Enter a loop
 	while (true)
 	{
-		ZeroMemory(&client, clientLength); // Clear the client structure
-		ZeroMemory(buf, 1024); // Clear the receive buffer
+		//ZeroMemory(&client, clientLength); // Clear the client structure
+		//ZeroMemory(buf, 1024); // Clear the receive buffer
 
-		// Wait for message
-		int bytesIn = recvfrom(in, buf, 1024, 0, (sockaddr*)&client, &clientLength);
-		/*
-		if (bytesIn == SOCKET_ERROR)
-		{
-			cout << "Error receiving from client " << WSAGetLastError() << endl;
-			continue;
-		}*/
+		bytesIn = recvfrom(in, buf, 1024, 0, (sockaddr*)&client, &clientLength);
 
-		// Display message and client info
-		char clientIp[256]; // Create enough space to convert the address byte array
-		ZeroMemory(clientIp, 256); // to string of characters
+		//ZeroMemory(clientIp, 256); // to string of characters
 
-		// Convert from byte array to chars
 		inet_ntop(AF_INET, &client.sin_addr, clientIp, 256);
 
-		// Display the message / who sent it
 		cout << "Message recv from " << clientIp << " : " << buf << endl;
 	}
 
@@ -112,7 +102,7 @@ void send_to_RPi()
 	{
 		s = to_string(x);
 		sendOk = sendto(out, s.c_str(), s.size() + 1, 0, (sockaddr*)&server, sizeof(server));
-		cout << "send:" << x << endl;
+		//cout << "send:" << x << endl;
 		x++;
 		//Sleep(1000);
 		/*
