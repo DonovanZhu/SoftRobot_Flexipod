@@ -18,25 +18,28 @@ void loop()
 {
   while (Serial.available() == 0);
   int i = 0;
+
   while (Serial.available() > 0)
   {
     incoming[i] = Serial.read();
     i++;
   }
   //ledMode = digitalRead(led);
-  Serial.println(incoming);
   data = atof(incoming);
-  Serial.println(data);
+
+  // Serial.println(incoming);
+
+  Serial.println(incoming);
   if (data >= 5.0)
   {
-    Serial.println("Led is off");
-    //delay(1000);               // wait for a second
+    // Serial.println("Led is off");
+    // delay(1000);               // wait for a second
     digitalWrite(led, LOW);   // turn the LED on (HIGH is the voltage level)
   }
   else if (data < 5.0)
   {
-    Serial.println("Led is on");
-    //delay(1000);               // wait for a second
+    // Serial.println("Led is on");
+    // delay(1000);               // wait for a second
     digitalWrite(led, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
 
