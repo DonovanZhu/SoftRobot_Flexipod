@@ -29,16 +29,16 @@ void loop()
 
   // Serial.println(incoming);
 
-  Serial.println(incoming);
+  Serial.println(data, 6);
   if (data >= 5.0)
   {
-    // Serial.println("Led is off");
+    Serial.println("Led is off");
     // delay(1000);               // wait for a second
     digitalWrite(led, LOW);   // turn the LED on (HIGH is the voltage level)
   }
   else if (data < 5.0)
   {
-    // Serial.println("Led is on");
+    Serial.println("Led is on");
     // delay(1000);               // wait for a second
     digitalWrite(led, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
