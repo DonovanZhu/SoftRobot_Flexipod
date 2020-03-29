@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <WS2tcpip.h>
 
 // Include the Winsock library (lib) file
@@ -36,12 +37,38 @@ void main()
 	sockaddr_in client; // Use to hold the client information (port / ip address)
 	int clientLength = sizeof(client); // The size of the client information
 
-	char buf[1024];
+	char buf[100];
+	unsigned short k;
+	int output = 0;
+	double speed;
 	while (true)
 	{
-		// ZeroMemory(buf, 1024); // Clear the receive buffer
-		recvfrom(in, buf, 1024, 0, (sockaddr*)&client, &clientLength);
-		printf("%s\n", buf);
+		
+		// ZeroMemory(buf, 10); // Clear the receive buffer
+		int datalength = recvfrom(in, buf, 100, 0, (sockaddr*)&client, &clientLength);
+		for (int i = 0; i < datalength; i++)
+		{
+			cout << buf[i];
+		}
+		cout << endl;
+		/*
+		if (output % 20 == 0)
+		{
+			for (int i = 2; i < 10; i += 2)
+			{
+				k = 0;
+				k |= (int16_t)(unsigned char)buf[i] << 8;
+				k |= (int16_t)(unsigned char)buf[i + 1];
+				speed = (double)(k - 0x2000) / 8192.0 * 400.0;
+				printf("%04X", k);
+				printf("	");
+			}
+			printf("\n");
+			output = 0;
+		}
+		output++;
+		*/
+		// printf("%d\n", buf);
 	}
 
 	// Close socket
