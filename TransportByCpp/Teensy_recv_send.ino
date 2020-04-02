@@ -344,6 +344,7 @@ void loop()
       // D_POSITION_LOW ~ D_POSITION_HIGH
       d_position_measured[k] = ConstrainAngle(motors[k].angleShaft);
     }
+    // Plan A: Send message as byte, does not work:
     /*
     message[0] = highByte(MESSAGE_START_TOKEN);
     message[1] = lowByte(MESSAGE_START_TOKEN);
@@ -359,26 +360,23 @@ void loop()
       message[i * 2 + 19] = lowByte(d_speed_cmd[i]);
     }
     */
-    if (issend % 12 ==0)
+    // Plan B: Send message as string, it works but has delay:
+    
+    if (issend % 5 ==0)
     {
-      Serial.println(String(((double)d_speed_measured[0] - 8192.0) / 8192.0 * 400.0) + \
-      " " + String(((double)d_speed_measured[1] - 8192.0) / 8192.0 * 400.0) + \
-      " " + String(((double)d_speed_measured[2] - 8192.0) / 8192.0 * 400.0) + \
-      " " + String(((double)d_speed_measured[3] - 8192.0) / 8192.0 * 400.0) + \
-      " " + String((double)d_position_measured[0] / 16384.0 * 360.0) + \
+      Serial.println(String((double)d_position_measured[0] / 16384.0 * 360.0) + \
       " " + String((double)d_position_measured[1] / 16384.0 * 360.0) + \
       " " + String((double)d_position_measured[2] / 16384.0 * 360.0) + \
-      " " + String((double)d_position_measured[3] / 16384.0 * 360.0));
+      " " + String((double)d_position_measured[3] / 16384.0 * 360.0) + \
+      " " + String(((double)d_speed_measured[0] - 8192.0) / 8192.0 * 400.0) + \
+      " " + String(((double)d_speed_measured[1] - 8192.0) / 8192.0 * 400.0) + \
+      " " + String(((double)d_speed_measured[2] - 8192.0) / 8192.0 * 400.0) + \
+      " " + String(((double)d_speed_measured[3] - 8192.0) / 8192.0 * 400.0));
       issend = 0;
     }
     issend++;
-    // byte mes[2];
-    // mes[0] = message[2];
-    // mes[1] = message[3];
-    // Serial.println((int16_t)message[0]);
-    // Serial.write(mes, sizeof(mes));
+
     //Serial.write(message, sizeof(message));
-    // Serial.println(Serial.baud());
     Serial.flush();
   }
 
