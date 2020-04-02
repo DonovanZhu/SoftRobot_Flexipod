@@ -24,32 +24,34 @@ void sendUDP(int fd)
 	struct sockaddr_in server_send;
 	struct hostent *hp;
 	double data = 0.0;
-	char read_buffer[100];
+	char read_buffer[50];
 	int bytes_read;
 	memset(&read_buffer, '\0', sizeof(read_buffer));
 	sock_send= socket(AF_INET, SOCK_DGRAM, 0);
 
 	server_send.sin_family = AF_INET;
-	hp = gethostbyname("192.168.0.67");
+	hp = gethostbyname("192.168.0.82");
 
 	bcopy((char *)hp->h_addr, (char *)&server_send.sin_addr, hp->h_length);
-	server_send.sin_port = htons(20000);
+	server_send.sin_port = htons(30000);
 	length_send=sizeof(struct sockaddr_in);
 	unsigned short k;
 	while (true)
 	{
 		
-		bytes_read = read(fd,&read_buffer,100);
-		/*
-		if (bytes_read > 0)
+		bytes_read = read(fd,&read_buffer,50);
+
+		if (bytes_read > 10)
 		{
+			/*
 			for (int i = 0; i < bytes_read; i++)
 				cout << read_buffer[i];
 			cout << endl;
+			*/
+			sendto(sock_send, read_buffer, bytes_read, 0, (const struct sockaddr *)&server_send, length_send);	
 		}
-		*/
 		// cout << read_buffer[0] << endl;
-		sendto(sock_send, read_buffer, bytes_read, 0, (const struct sockaddr *)&server_send, length_send);		
+		// sendto(sock_send, read_buffer, bytes_read, 0, (const struct sockaddr *)&server_send, length_send);		
 	}
 	close(sock_send);
 	return;
@@ -61,7 +63,7 @@ void recvUDP(int fd)
 	socklen_t fromlen;
 	struct sockaddr_in server_recv;
 	struct sockaddr_in from;
-	char buf[10] = {0x00, 0x01, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00};
+	char buf[30];
 	
 	sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
 	
@@ -75,10 +77,41 @@ void recvUDP(int fd)
 		   
 	fromlen = sizeof(struct sockaddr_in);
 	write(fd,buf,sizeof(buf));
+	int pos = 0;
+	char num[10];
+	char command[10] = {0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	int j;
+	int k;
 	while (true) 
 	{
-		recvfrom(sock_recv, buf, 10, 0, (struct sockaddr *)&from, &fromlen);
-		write(fd,buf,sizeof(buf));
+		j = 2;
+		pos = 0;
+		// receive string:
+		int datalength = recvfrom(sock_recv, buf, 30, 0, (struct sockaddr *)&from, &fromlen);
+		// cout << (int16_t)(unsigned char)buf[0] << " " << (int16_t)(unsigned char)buf[1] << endl;
+		for (int i = 0; i < datalength; ++i)
+		{
+			if (buf[i] == ',')
+			{
+				memset(num, 0, sizeof(num));
+				strncpy(num, buf + pos, i - pos);
+				k = atoi(num);
+				command[j + 1] = k & 0x00ff;
+				command[j] = (k >> 8) & 0x00ff;
+				pos = i + 1;
+				j+=2;
+			}
+		}
+		/*
+		for (int i = 0; i < sizeof(command); ++i)
+		{
+			cout << setfill('0') << setw(2) << hex << (int16_t)(unsigned char)command[i] << " " ;
+		}
+
+		//cout << setfill('0') << setw(4) << hex << k;
+		cout << endl;
+		*/
+		write(fd,command,sizeof(command));
 	}
 	return;
 }
