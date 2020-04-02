@@ -1,3 +1,4 @@
+//only work when opening Serial Monitor
 byte mes[2] = {0x01, 0x02};
 
 void setup()
