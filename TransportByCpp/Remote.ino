@@ -92,7 +92,6 @@ double average_angle;
 int speed_error[4] = {0, 0, 0, 0};
 double absolute_angle[4] = {0.0, 0.0, 0.0, 0.0};
 bool first_loop = true;
-bool motor_dir = true;
 
 double anglePID_four(int Id, double Motor_angle, double dt)
 {
@@ -102,9 +101,8 @@ double anglePID_four(int Id, double Motor_angle, double dt)
   return v_command;
 }
 
-double anglePID_two(int Id, double Motor_angle, double dt, double avg_angle)
+double anglePID_two(int Id, double dt)
 {
-  new_error2[Id] = Motor_angle - avg_angle;
   error_sum2[Id] += new_error2[Id];
   double v_command = (k_p2 * (new_error2[Id] + error_sum2[Id] * dt / k_i2));
   return v_command;
@@ -162,12 +160,12 @@ void loop()
           else
           {
             if (abs(angle0 - angle[j]) < 180.0)
-                absolute_angle[j] += (angle0 - angle[j]);
+              absolute_angle[j] += (angle0 - angle[j]);
 
             else
             {
               if (angle0 < angle[j])
-              
+
               {
                 absolute_angle[j] += 360.0 - (angle[j] - angle0);
               }
@@ -204,10 +202,10 @@ void loop()
 
     if (sendPCinterval % 4 == 0)
     {
-        udp.beginPacket(sendPCAddress, sendPCPort);
-        udp.printf("%s",motorsData);
-        udp.endPacket();
-        sendPCinterval = 0;
+      udp.beginPacket(sendPCAddress, sendPCPort);
+      udp.printf("%s", motorsData);
+      udp.endPacket();
+      sendPCinterval = 0;
     }
     sendPCinterval++;
   }
@@ -232,62 +230,155 @@ void loop()
       time_previous = micros();
 
       // 90 degree
-      if (abs(HValue - H_MID) < error && abs(VValue - V_MID) > error)
+      if (abs(HValue - H_MID) < error && VValue > V_MID + error)
       {
         double per_error_2;
-        double average_angle1 = (absolute_angle[0] + absolute_angle[1]) / 2.0;
-        double average_angle2 = (absolute_angle[2] + absolute_angle[3]) / 2.0;
-        if (VValue > V_MID)
+
+        motorSpeed = (int)((double)(VValue - V_MID) / (double)(V_HIGH - V_MID) * 0x2000) + 0x2000;
+
+        if (abs(angle[0] - angle[1]) > 180.0)
         {
-          motorSpeed = (int)((double)(VValue - V_MID) / (double)(V_HIGH - V_MID) * 0x2000) + 0x2000;
-          for (int Id = 0; Id < 4; ++Id)
+          if (angle[0] > angle[1])
           {
-            if (Id < 2)
-            {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.3, 0.3);
-              if (per_error_2 < 0.0)
-                speed_error[Id] = (int)(per_error_2 * (0x4000 - motorSpeed));
-              if (per_error_2 >= 0.0)
-                speed_error[Id] = (int)(per_error_2 * (motorSpeed - 0x2000));
-            }
-            else
-            {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.3, 0.3);
-              if (per_error_2 < 0.0)
-                speed_error[Id] = (int)(per_error_2 * (motorSpeed - 0x2000));
-              if (per_error_2 >= 0.0)
-                speed_error[Id] = (int)(per_error_2 * (0x4000 - motorSpeed));
-            }
+            new_error2[1] = (angle[1] - angle[0]) / 2.0;
+            new_error2[0] = - new_error2[1];
+          }
+          else
+          {
+            new_error2[0] = (angle[0] - angle[1]) / 2.0;
+            new_error2[1] = - new_error2[0];
           }
         }
         else
         {
-          motorSpeed = (int)((double)(VValue - V_MID) / (double)(V_MID - V_LOW) * 0x2000) + 0x2000;
-          for (int Id = 0; Id < 4; ++Id)
+          if (angle[0] > angle[1])
           {
-            if (Id < 2)
-            {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.3, 0.3);
-              if (per_error_2 < 0.0)
-                speed_error[Id] = (int)(per_error_2 * motorSpeed);
-              if (per_error_2 >= 0.0)
-                speed_error[Id] = (int)(per_error_2 * (0x2000 - motorSpeed));
-            }
-            else
-            {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.3, 0.3);
-              if (per_error_2 < 0.0)
-                speed_error[Id] = (int)(per_error_2 * (0x2000 - motorSpeed));
-              if (per_error_2 >= 0.0)
-                speed_error[Id] = (int)(per_error_2 * motorSpeed);
-            }
+            new_error2[0] = (angle[1] - angle[0]) / 2.0;
+            new_error2[1] = - new_error2[0];
+          }
+          else
+          {
+            new_error2[1] = (angle[0] - angle[1]) / 2.0;
+            new_error2[0] = - new_error2[1];
           }
         }
+
+        if (abs(angle[2] - angle[3]) > 180.0)
+        {
+          if (angle[2] > angle[3])
+          {
+            new_error2[2] = (angle[3] - angle[2]) / 2.0;
+            new_error2[3] = - new_error2[2];
+          }
+          else
+          {
+            new_error2[3] = (angle[2] - angle[3]) / 2.0;
+            new_error2[2] = - new_error2[3];
+          }
+        }
+        else
+        {
+          if (angle[2] > angle[3])
+          {
+            new_error2[2] = (angle[2] - angle[3]) / 2.0;
+            new_error2[3] = - new_error2[2];
+          }
+          else
+          {
+            new_error2[3] = (angle[3] - angle[2]) / 2.0;
+            new_error2[2] = - new_error2[3];
+          }
+        }
+
+        for (int Id = 0; Id < 4; ++Id)
+        {
+          per_error_2 = constrain(anglePID_two(Id, time_delta), -0.3, 0.3);
+          if (per_error_2 > 0.0)
+            speed_error[Id] = (int)(per_error_2 * (0x4000 - motorSpeed));
+          if (per_error_2 <= 0.0)
+            speed_error[Id] = (int)(per_error_2 * (motorSpeed - 0x2000));
+        }
         udp.beginPacket(sendRPiAddress, sendRPiPort);
-        udp.printf("%u,%u,%u,%u,", motorSpeed - speed_error[0], motorSpeed - speed_error[1], \
+        udp.printf("%u,%u,%u,%u,", motorSpeed + speed_error[0], motorSpeed + speed_error[1], \
                    0x4000 - motorSpeed - speed_error[2], 0x4000 - motorSpeed - speed_error[3]);
         udp.endPacket();
       }
+
+      // 270 degree
+      if (abs(HValue - H_MID) < error && VValue < V_MID - error)
+      {
+        double per_error_2;
+
+        motorSpeed = (int)((double)(VValue - V_MID) / (double)(V_MID - V_LOW) * 0x2000) + 0x2000;
+
+        if (abs(angle[0] - angle[1]) > 180.0)
+        {
+          if (angle[0] > angle[1])
+          {
+            new_error2[1] = (angle[0] - angle[1]) / 2.0;
+            new_error2[0] = - new_error2[1];
+          }
+          else
+          {
+            new_error2[0] = (angle[1] - angle[0]) / 2.0;
+            new_error2[1] = - new_error2[0];
+          }
+        }
+        else
+        {
+          if (angle[0] > angle[1])
+          {
+            new_error2[0] = (angle[0] - angle[1]) / 2.0;
+            new_error2[1] = - new_error2[0];
+          }
+          else
+          {
+            new_error2[1] = (angle[1] - angle[0]) / 2.0;
+            new_error2[0] = - new_error2[1];
+          }
+        }
+
+        if (abs(angle[2] - angle[3]) > 180.0)
+        {
+          if (angle[2] > angle[3])
+          {
+            new_error2[2] = (angle[2] - angle[3]) / 2.0;
+            new_error2[3] = - new_error2[2];
+          }
+          else
+          {
+            new_error2[3] = (angle[3] - angle[2]) / 2.0;
+            new_error2[2] = - new_error2[3];
+          }
+        }
+        else
+        {
+          if (angle[2] > angle[3])
+          {
+            new_error2[2] = (angle[3] - angle[2]) / 2.0;
+            new_error2[3] = - new_error2[2];
+          }
+          else
+          {
+            new_error2[3] = (angle[2] - angle[3]) / 2.0;
+            new_error2[2] = - new_error2[3];
+          }
+        }
+
+        for (int Id = 0; Id < 4; ++Id)
+        {
+          per_error_2 = constrain(anglePID_two(Id, time_delta), -0.3, 0.3);
+          if (per_error_2 > 0.0)
+            speed_error[Id] = (int)(per_error_2 * motorSpeed);
+          if (per_error_2 <= 0.0)
+            speed_error[Id] = (int)(per_error_2 * (0x2000 - motorSpeed));
+        }
+        udp.beginPacket(sendRPiAddress, sendRPiPort);
+        udp.printf("%u,%u,%u,%u,", motorSpeed - speed_error[0], motorSpeed - speed_error[1], \
+                   0x4000 - motorSpeed + speed_error[2], 0x4000 - motorSpeed + speed_error[3]);
+        udp.endPacket();
+      }
+
 
       // 180 degree
       else if (abs(HValue - H_MID) > error && abs(VValue - V_MID) < error)
@@ -322,6 +413,7 @@ void loop()
         udp.printf("%u,%u,%u,%u,", motorSpeed - speed_error[0], motorSpeed - speed_error[1], motorSpeed - speed_error[2], motorSpeed - speed_error[3]);
         udp.endPacket();
       }
+
       // 135 degree
       else if (HValue <= (H_MID - error) && VValue >= (V_MID + error) && (VValue - V_MID) >= (H_MID - HValue))
       {
@@ -338,7 +430,8 @@ void loop()
           absolute_angle[m] = angle[m];
         }
       }
-      // 225 degree
+      
+        // 225 degree
       else if (HValue <= (H_MID - error) && VValue <= (V_MID - error))
       {
         int distance = (int)sqrt(abs(VValue - V_MID) * abs(VValue - V_MID) + abs(HValue - H_MID) * abs(HValue - H_MID));
