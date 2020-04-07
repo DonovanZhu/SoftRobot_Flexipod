@@ -74,16 +74,17 @@ bool f = true;
 bool s = false;
 
 double k_p = 0.01;
-double k_i = 6000000.0;
+double k_i = 1000000000.0;
 //double k_d = 0.0;
 
 double k_p2 = 0.01;
-double k_i2 = 8000000.0;
+double k_i2 = 1000000000.0;
 
 double angle0;
 double angle[4] = {0.0, 0.0, 0.0, 0.0};
 double former_error[4] = {0.0, 0.0, 0.0, 0.0};
 double new_error[4] = {0.0, 0.0, 0.0, 0.0};
+double new_error2[4] = {0.0, 0.0, 0.0, 0.0};
 double error_sum[4] = {0.0, 0.0, 0.0, 0.0};
 double error_sum2[4] = {0.0, 0.0, 0.0, 0.0};
 
@@ -103,9 +104,9 @@ double anglePID_four(int Id, double Motor_angle, double dt)
 
 double anglePID_two(int Id, double Motor_angle, double dt, double avg_angle)
 {
-  new_error[Id] = Motor_angle - avg_angle;
-  error_sum2[Id] += new_error[Id];
-  double v_command = (k_p2 * (new_error[Id] + error_sum2[Id] * dt / k_i2));
+  new_error2[Id] = Motor_angle - avg_angle;
+  error_sum2[Id] += new_error2[Id];
+  double v_command = (k_p2 * (new_error2[Id] + error_sum2[Id] * dt / k_i2));
   return v_command;
 }
 
@@ -118,6 +119,8 @@ void loop()
   filterH.Filter(HValue);
   VValue = filterV.Current();
   HValue = filterH.Current();
+  VValue = constrain(VValue, V_LOW, V_HIGH);
+  HValue = constrain(HValue, H_LOW, H_HIGH);
   dataSize = udp.parsePacket();
 
   if (dataSize)
@@ -159,19 +162,12 @@ void loop()
           else
           {
             if (abs(angle0 - angle[j]) < 180.0)
-            {
-              if (angle0 - angle[j] > 0)
-              {
                 absolute_angle[j] += (angle0 - angle[j]);
-              }
-              else
-              {
-                absolute_angle[j] += (angle0 - angle[j]);
-              }
-            }
+
             else
             {
               if (angle0 < angle[j])
+              
               {
                 absolute_angle[j] += 360.0 - (angle[j] - angle0);
               }
@@ -217,7 +213,7 @@ void loop()
   }
 
   // stay
-  if (sendRPiinterval % 30 == 0)
+  if (sendRPiinterval % 40 == 0)
   {
     if (abs(HValue - H_MID) < error && abs(VValue - V_MID) < error)
     {
@@ -248,7 +244,7 @@ void loop()
           {
             if (Id < 2)
             {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.4, 0.4);
+              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.3, 0.3);
               if (per_error_2 < 0.0)
                 speed_error[Id] = (int)(per_error_2 * (0x4000 - motorSpeed));
               if (per_error_2 >= 0.0)
@@ -256,7 +252,7 @@ void loop()
             }
             else
             {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.4, 0.4);
+              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.3, 0.3);
               if (per_error_2 < 0.0)
                 speed_error[Id] = (int)(per_error_2 * (motorSpeed - 0x2000));
               if (per_error_2 >= 0.0)
@@ -271,7 +267,7 @@ void loop()
           {
             if (Id < 2)
             {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.4, 0.4);
+              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle1), -0.3, 0.3);
               if (per_error_2 < 0.0)
                 speed_error[Id] = (int)(per_error_2 * motorSpeed);
               if (per_error_2 >= 0.0)
@@ -279,7 +275,7 @@ void loop()
             }
             else
             {
-              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.4, 0.4);
+              per_error_2 = constrain(anglePID_two(Id, absolute_angle[Id], time_delta, average_angle2), -0.3, 0.3);
               if (per_error_2 < 0.0)
                 speed_error[Id] = (int)(per_error_2 * (0x2000 - motorSpeed));
               if (per_error_2 >= 0.0)
@@ -303,7 +299,7 @@ void loop()
           motorSpeed = (int)((double)(HValue - H_MID) / (double)(H_HIGH - H_MID) * 0x2000) + 0x2000;
           for (int Id = 0; Id < 4; ++Id)
           {
-            per_error_4 = constrain(anglePID_four(Id, absolute_angle[Id], time_delta), -0.4, 0.4);
+            per_error_4 = constrain(anglePID_four(Id, absolute_angle[Id], time_delta), -0.3, 0.3 );
             if (per_error_4 < 0.0)
               speed_error[Id] = (int)(per_error_4 * (0x4000 - motorSpeed));
             if (per_error_4 >= 0.0)
@@ -315,7 +311,7 @@ void loop()
           motorSpeed = (int)((double)(HValue - H_MID) / (double)(H_MID - H_LOW) * 0x2000) + 0x2000;
           for (int Id = 0; Id < 4; ++Id)
           {
-            per_error_4 = constrain(anglePID_four(Id, absolute_angle[Id], time_delta), -0.4, 0.4);
+            per_error_4 = constrain(anglePID_four(Id, absolute_angle[Id], time_delta), -0.3, 0.3);
             if (per_error_4 < 0.0)
               speed_error[Id] = (int)(per_error_4 * motorSpeed);
             if (per_error_4 >= 0.0)
@@ -327,24 +323,68 @@ void loop()
         udp.endPacket();
       }
       // 135 degree
-      else if (HValue < H_MID && VValue > V_MID)
+      else if (HValue <= (H_MID - error) && VValue >= (V_MID + error) && (VValue - V_MID) >= (H_MID - HValue))
       {
-
+        int distance = (int)sqrt(abs(VValue - V_MID) * abs(VValue - V_MID) + abs(HValue - H_MID) * abs(HValue - H_MID));
+        distance = constrain(distance, 0, V_HIGH - V_MID);
+        motorSpeed = (int)((double)distance / (double)(V_HIGH - V_MID) * 0x2000) + 0x2000;
+        double per = 1.0 - (double)(H_MID - HValue) / (double)(VValue - V_MID);
+        udp.beginPacket(sendRPiAddress, sendRPiPort);
+        udp.printf("%u,%u,%u,%u,", (int)((motorSpeed - 0x2000) * per + 0x2000), (int)((motorSpeed - 0x2000) * per + 0x2000),\
+        0x4000 - motorSpeed, 0x4000 - motorSpeed);
+        udp.endPacket();
+        for (int m = 0; m < 4; ++m)
+        {
+          absolute_angle[m] = angle[m];
+        }
       }
       // 225 degree
-      else if (HValue < H_MID && VValue < V_MID)
+      else if (HValue <= (H_MID - error) && VValue <= (V_MID - error))
       {
-
+        int distance = (int)sqrt(abs(VValue - V_MID) * abs(VValue - V_MID) + abs(HValue - H_MID) * abs(HValue - H_MID));
+        distance = constrain(distance, 0, V_MID - V_LOW);
+        motorSpeed = (int)((double)(-distance) / (double)(V_MID - V_LOW) * 0x2000) + 0x2000;
+        double per = 1.0 - (double)(H_MID - HValue) / (double)(V_MID-VValue);
+        udp.beginPacket(sendRPiAddress, sendRPiPort);
+        udp.printf("%u,%u,%u,%u,", (int)((motorSpeed - 0x2000) * per + 0x2000), (int)((motorSpeed - 0x2000) * per + 0x2000),\
+        0x4000 - motorSpeed, 0x4000 - motorSpeed);
+        udp.endPacket();
+        for (int m = 0; m < 4; ++m)
+        {
+          absolute_angle[m] = angle[m];
+        }
       }
       // 315 degree
-      else if (HValue > H_MID && VValue < V_MID)
+      else if (HValue >= (H_MID + error) && VValue < (V_MID - error))
       {
-
+        int distance = (int)sqrt(abs(VValue - V_MID) * abs(VValue - V_MID) + abs(HValue - H_MID) * abs(HValue - H_MID));
+        distance = constrain(distance, 0, V_MID - V_LOW);
+        motorSpeed = (int)((double)(-distance) / (double)(V_MID - V_LOW) * 0x2000) + 0x2000;
+        double per = 1.0 - (double)(HValue - H_MID) / (double)(V_MID-VValue);
+        udp.beginPacket(sendRPiAddress, sendRPiPort);
+        udp.printf("%u,%u,%u,%u,", motorSpeed, motorSpeed,\
+        (int)(0x4000 - ((motorSpeed - 0x2000) * per + 0x2000)), (int)(0x4000 - ((motorSpeed - 0x2000) * per + 0x2000)));
+        udp.endPacket();
+        for (int m = 0; m < 4; ++m)
+        {
+          absolute_angle[m] = angle[m];
+        }
       }
       // 45 degree
-      else if (HValue > H_MID && VValue > V_MID)
+      else if (HValue > (H_MID + error) && VValue > (V_MID + error))
       {
-
+        int distance = (int)sqrt(abs(VValue - V_MID) * abs(VValue - V_MID) + abs(HValue - H_MID) * abs(HValue - H_MID));
+        distance = constrain(distance, 0, V_HIGH - V_MID);
+        motorSpeed = (int)((double)distance / (double)(V_HIGH - V_MID) * 0x2000) + 0x2000;
+        double per = 1.0 - (double)(HValue - H_MID) / (double)(VValue - V_MID);
+        udp.beginPacket(sendRPiAddress, sendRPiPort);
+        udp.printf("%u,%u,%u,%u,", motorSpeed, motorSpeed,\
+        (int)((0x4000 - ((motorSpeed - 0x2000) * per + 0x2000))), (int)((0x4000 - ((motorSpeed - 0x2000) * per + 0x2000))));
+        udp.endPacket();
+        for (int m = 0; m < 4; ++m)
+        {
+          absolute_angle[m] = angle[m];
+        }
       }
     }
     sendRPiinterval = 0;
