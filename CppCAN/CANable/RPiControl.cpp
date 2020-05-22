@@ -1,14 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <time.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-
 #include <linux/can.h>
 #include <linux/can/raw.h>
+#include <msgpack.hpp>
+#include <vector>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fcntl.h>   /* File Control Definitions           */
+#include <termios.h> /* POSIX Terminal Control Definitions */
+#include <iomanip>
+#include <iostream>
+
+
 
 #define PID_H 1000.0
 #define PID_L -1000.0
@@ -37,12 +47,18 @@ double command[4] = {0.0, 0.0, 0.0, 0.0};
 
 static double k_p = 1.0;
 static double k_i = 0.00000;
-static double k_d = 4.0;
+static double k_d = 0.0;
 
 
-double desire_speed[4] = {200.0, 200.0, 200.0, 200.0};
+double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};
 
-void recive_send(int s)
+class MotorSpeed {
+public:
+	double rpm[4];
+	MSGPACK_DEFINE(rpm);
+};
+
+void CAN_control(int s)
 {
 	int i = 0;	
 	while(1)
@@ -111,11 +127,9 @@ void recive_send(int s)
 
 	printf("\n");
 	
-	
-	
 }
 
-void receive_init(int s)
+void control_init(int s)
 {
 	int i = 0;	
 	while(1)
@@ -148,6 +162,8 @@ void receive_init(int s)
 
 int main(int argc, char **argv)
 {
+/***********************CAN_Bus_Initializing***********************/
+
 	int s; 
 	struct sockaddr_can addr;
 	struct ifreq ifr;
@@ -165,15 +181,48 @@ int main(int argc, char **argv)
 	addr.can_ifindex = ifr.ifr_ifindex;
 	
 	bind(s, (struct sockaddr *)&addr, sizeof(addr));
+/******************************************************************/
 
+/*************************UDP_Initializing*************************/
+	int sock_recv, length_recv;
+	socklen_t fromlen;
+	struct sockaddr_in server_recv;
+	struct sockaddr_in from;
+
+	sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
 	
-	receive_init(s);
+	length_recv = sizeof(server_recv);
+	bzero(&server_recv,length_recv);
+	
+	server_recv.sin_family = AF_INET;
+	server_recv.sin_addr.s_addr = INADDR_ANY;
+	server_recv.sin_port = htons(10000);
+	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
+		   
+	fromlen = sizeof(struct sockaddr_in);
+	
+	char buf[200];
+	vector<MotorSpeed> recv;
+/******************************************************************/
+	
+	control_init(s);
 	
 	frame_send.can_id = 0x200;
 	frame_send.can_dlc = 8;
 	while(1)
 	{
-		recive_send(s);
+		int datalength = recvfrom(sock_recv, buf, 200, 0, (struct sockaddr *)&from, &fromlen);
+		msgpack::object_handle oh = msgpack::unpack(buf, datalength);
+		
+		msgpack::object obj = oh.get();
+		recv.clear();
+		obj.convert(recv);
+		for (int i = 0; i < 4; i++)
+		{
+			desire_speed[i] = recv[0].rpm[i];
+		}
+		
+		CAN_control(s);
 	}
 	
 	printf("\r\n");
