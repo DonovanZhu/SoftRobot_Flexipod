@@ -20,37 +20,40 @@
 
 
 
-#define PID_H 1000.0
-#define PID_L -1000.0
+#define PID_H 10000.0
+#define PID_L -10000.0
 #define speedDirectionBoundary 32768.0
 #define maxBoundary 65535.0
 #define drive_ratio 36.0
-
-
+#define k_p 7.0
+#define k_i 0.0015
+#define k_d 0.00006
+/*
+#define k_p 11.0
+#define k_i 0.22
+#define k_d 0.0032
+*/
 using namespace std;
 
+/***********************Global***********************/
 double time_step_former[4] = {0.0, 0.0, 0.0, 0.0};
 double time_step_later[4] = {0.0, 0.0, 0.0, 0.0};
 int can_received[4] = {0, 0, 0, 0};
 double speed_meas[4] = {0.0, 0.0, 0.0, 0.0};
-
-int rpm;
-struct can_frame frame_recv;
-struct can_frame frame_send;
-
-
 double dt[4] = {0.0, 0.0, 0.0, 0.0};
 double error[4] = {0.0, 0.0, 0.0, 0.0};
 double error_former[4] = {0.0, 0.0, 0.0, 0.0};
 double error_sum[4] = {0.0, 0.0, 0.0, 0.0};
 double command[4] = {0.0, 0.0, 0.0, 0.0};
-
-static double k_p = 1.0;
-static double k_i = 0.00000;
-static double k_d = 0.0;
-
-
 double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};
+int angle;
+int rpm;
+int torque;
+struct can_frame frame_recv;
+struct can_frame frame_send;
+
+char buf_send[200];
+char buf_recv[200];
 
 class MotorSpeed {
 public:
@@ -58,9 +61,20 @@ public:
 	MSGPACK_DEFINE(rpm);
 };
 
+class MotorData {
+public:
+	double angle[4];
+	double rpm[4];
+	double torque[4];
+	MSGPACK_DEFINE(angle, rpm, torque);
+};
+
+
+MotorData SendMotorData;
+
 void CAN_control(int s)
 {
-	int i = 0;	
+	int i = 0;
 	while(1)
 	{
 		read(s, &frame_recv, sizeof(struct can_frame));
@@ -75,6 +89,16 @@ void CAN_control(int s)
 			else
 				speed_meas[frame_recv.can_id - 513] = rpm / drive_ratio;
 			can_received[frame_recv.can_id - 513] = true;
+			
+			angle = 0;
+			angle |= (int16_t)(unsigned char)frame_recv.data[0] << 8;
+			angle |= (int16_t)(unsigned char)frame_recv.data[1];
+			SendMotorData.angle[i] = (double)angle / 8191.0 * 360.0;		
+			SendMotorData.rpm[i] = speed_meas[i];		
+			torque = 0;
+			torque |= (int16_t)(unsigned char)frame_recv.data[4] << 8;
+			torque |= (int16_t)(unsigned char)frame_recv.data[5];
+			SendMotorData.torque[i] = (double)torque;
 			i++;
 		}
 		if (i == 4)
@@ -87,22 +111,28 @@ void CAN_control(int s)
 	
 	for (i = 0; i < 4; ++i)
 	{
-		dt[i] = (double)(time_step_later[i] - time_step_former[i]);
+		dt[i] = (double)(time_step_later[i] - time_step_former[i]) / CLOCKS_PER_SEC;
 		printf("v = %f  ",speed_meas[i]);
-		printf("t = %f  ", dt[i] / CLOCKS_PER_SEC);
-		
+		printf("t = %f  ", dt[i]);
+
 		/***********************PID***********************/
 		time_step_former[i] = time_step_later[i];
 		error[i] = desire_speed[i] - speed_meas[i];
-		error_sum[i] += error[i];
-		command[i] = k_p * (error[i] + error_sum[i] * dt[i] * k_i + k_d * (error[i] - error_former[i]) / dt[i]);
+		
+		
+		if (dt[i] < 0.0002)
+		{
+			error_sum[i] += error[i];
+			command[i] = k_p * (error[i] + error_sum[i] * k_i + k_d * (error[i] - error_former[i]) / dt[i]);
+		}
 		error_former[i] = error[i];
 		
 		if(command[i] >= 0)
 		{
 			if(command[i] > PID_H)
 				command[i] = PID_H;
-			int v = int((command[i] / PID_H) * speedDirectionBoundary);
+			int v = int(command[i]);
+			// int v = int((command[i] / PID_H) * speedDirectionBoundary);
 			frame_send.data[2 * i + 1] = v & 0x00ff;
 			frame_send.data[2 * i] = (v >> 8) & 0x00ff;
 			
@@ -111,22 +141,18 @@ void CAN_control(int s)
 		{
 			if(command[i] < PID_L)
 				command[i] = PID_L;
-			int v = 0xffff - int((command[i] / PID_L) * speedDirectionBoundary);
+			int v = 0xffff + int(command[i]);
+			// int v = 0xffff - int((command[i] / PID_L) * speedDirectionBoundary);
 			frame_send.data[2 * i + 1] = v & 0x00ff;
 			frame_send.data[2 * i] = (v >> 8) & 0x00ff;
 		}
+		
 
 	}
-
-	int nbytes = write(s, &frame_send, sizeof(frame_send)); 
-	if(nbytes != sizeof(frame_send)) 
-	{
-		printf("Send Error frame[0]!\r\n");
-		system("sudo ifconfig slcan0 down");
-	}
-
 	printf("\n");
-	
+
+	write(s, &frame_send, sizeof(can_frame)); 
+
 }
 
 void control_init(int s)
@@ -183,11 +209,11 @@ int main(int argc, char **argv)
 	bind(s, (struct sockaddr *)&addr, sizeof(addr));
 /******************************************************************/
 
-/*************************UDP_Initializing*************************/
+/********************UDP_Receiving_Initializing********************/
 	int sock_recv, length_recv;
 	socklen_t fromlen;
 	struct sockaddr_in server_recv;
-	struct sockaddr_in from;
+	struct sockaddr_in hold_recv;
 
 	sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
 	
@@ -196,23 +222,41 @@ int main(int argc, char **argv)
 	
 	server_recv.sin_family = AF_INET;
 	server_recv.sin_addr.s_addr = INADDR_ANY;
-	server_recv.sin_port = htons(10000);
+	server_recv.sin_port = htons(1000);
 	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
 		   
 	fromlen = sizeof(struct sockaddr_in);
-	
-	char buf[200];
+
 	vector<MotorSpeed> recv;
+
 /******************************************************************/
+
+/*********************UDP_Sending_Initializing*********************/
+ 	int sock_send, length_send;
+	struct sockaddr_in client_send;
+
+	sock_send = socket(AF_INET, SOCK_DGRAM, 0);
 	
+	length_send = sizeof(client_send);
+	bzero(&client_send,length_send);
+	
+	client_send.sin_family = AF_INET;
+	client_send.sin_port = htons(2000);
+	inet_pton(AF_INET, "192.168.0.67", &client_send.sin_addr);
+	bind(sock_send,(struct sockaddr *)&client_send,length_send);
+	vector<MotorData> send;
+
+
+/******************************************************************/
+
 	control_init(s);
 	
 	frame_send.can_id = 0x200;
 	frame_send.can_dlc = 8;
 	while(1)
 	{
-		int datalength = recvfrom(sock_recv, buf, 200, 0, (struct sockaddr *)&from, &fromlen);
-		msgpack::object_handle oh = msgpack::unpack(buf, datalength);
+		int datalength = recvfrom(sock_recv, buf_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
+		msgpack::object_handle oh = msgpack::unpack(buf_recv, datalength);
 		
 		msgpack::object obj = oh.get();
 		recv.clear();
@@ -223,6 +267,12 @@ int main(int argc, char **argv)
 		}
 		
 		CAN_control(s);
+		
+		send.clear();
+		send.push_back(SendMotorData);
+		msgpack::sbuffer sbuf;
+		msgpack::pack(sbuf, send);
+		sendto(sock_send, sbuf.data(), sbuf.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
 	}
 	
 	printf("\r\n");
