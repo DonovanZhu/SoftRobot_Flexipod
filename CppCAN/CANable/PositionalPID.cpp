@@ -124,12 +124,12 @@ void CAN_control(int s)
 		error[i] = desire_speed[i] - speed_meas[i];
 		
 		
-		if (dt[i] < 0.002 && error[i] < 50.0)
+		if (dt[i] < 0.002 && abs(error[i]) < 100.0)
 		{
 			error_sum[i] += error[i];
 			command[i] = k_p * (error[i] + error_sum[i] * 0.001 + k_d * (error[i] - error_former[i]) / dt[i]);
 		}
-		else if (dt[i] < 0.002 && error[i] >= 50.0)
+		else if (dt[i] < 0.002 && abs(error[i]) >= 100.0)
 		{
 			error_sum[i] += error[i];
 			command[i] = 0.5 * k_p * error[i];
