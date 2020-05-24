@@ -19,12 +19,14 @@
 #include <iomanip>
 #include <iostream>
 
-#define PID_H 10000.0
-#define PID_L -10000.0
-#define speedDirectionBoundary 32768.0
-#define maxBoundary 65535.0
-#define drive_ratio 36.0
-
+#define PID_H 10000.0 //Upper limit of PID output
+#define PID_L -10000.0 //lower limit of PID output
+#define drive_ratio 36.0 // Drive ratio of motor gear box
+#define speedDirectionBoundary 32768.0 //32768(dec) = 0x 8000
+// if speed command higher than 32768, the motor rotates clockwise
+// if speed command lower than 32768, the motor rotates counter-clockwise
+#define maxBoundary 65535.0 // 0xffff, command upper limit
+// PID:
 #define k_p 24.5
 #define k_i 0.035
 #define k_d 0.00
@@ -32,15 +34,15 @@
 using namespace std;
 
 /***********************Global***********************/
-double time_step_former[4] = {0.0, 0.0, 0.0, 0.0};
-double time_step_later[4] = {0.0, 0.0, 0.0, 0.0};
-int can_received[4] = {0, 0, 0, 0};
-double speed_meas[4] = {0.0, 0.0, 0.0, 0.0};
-double dt[4] = {0.0, 0.0, 0.0, 0.0};
-double error[4] = {0.0, 0.0, 0.0, 0.0};
-double error_former[4] = {0.0, 0.0, 0.0, 0.0};
+double time_step_former[4] = {0.0, 0.0, 0.0, 0.0}; //time of former step
+double time_step_later[4] = {0.0, 0.0, 0.0, 0.0}; // time of current step
+int can_received[4] = {0, 0, 0, 0}; // Bool array to check if the CAN signal of 4 motors is received
+double speed_meas[4] = {0.0, 0.0, 0.0, 0.0}; // measured speed
+double dt[4] = {0.0, 0.0, 0.0, 0.0}; // time step, the difference between time_step_later and time_step_former
+double error[4] = {0.0, 0.0, 0.0, 0.0}; // current step error
+double error_former[4] = {0.0, 0.0, 0.0, 0.0}; // former step error
 
-double command[4] = {0.0, 0.0, 0.0, 0.0};
+double command[4] = {0.0, 0.0, 0.0, 0.0}; //control loop output
 double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};
 
 
@@ -48,53 +50,71 @@ double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};
 int angle;
 int rpm;
 int torque;
-struct can_frame frame_recv;
-struct can_frame frame_send;
+struct can_frame frame_recv; // for holding CAN data received from motors
+struct can_frame frame_send; // for holding CAN data sent to motors
 
-char buf_send[200];
-char buf_recv[200];
+char buf_send[200]; // for holding UDP data send to PC
+char buf_recv[200]; // for holding UDP data received from Joystick
 
-struct timespec time1;
+struct timespec time1; //for timer
 struct timespec time2;
 
-double x = 0.0;
-
+// class for receiving command from Joystick if using msgpack
 class MotorSpeed {
 public:
 	int rpm[4];
 	MSGPACK_DEFINE(rpm);
 };
 
+
+// class for sending command to PC if using msgpack
 class MotorData {
 public:
-	double angle[4];
-	double rpm[4];
-	double torque[4];
+	double angle[4]; //degree
+	double rpm[4]; //rpm
+	double torque[4]; //N*m
 	MSGPACK_DEFINE(angle, rpm, torque);
 };
 
+// set a object for sending UDP through msgpack
 MotorData SendMotorData;
 
+// PID control
 void CAN_control(int s)
 {
 	int i = 0;
+	// loop while 4 motors' CAN data received
 	while(1)
 	{
+		// read from CAN bus
 		read(s, &frame_recv, sizeof(struct can_frame));
-
+		// check if the specific motor's data is received
+		// 513(dec) = 0x201(hex) whcih is the CAN id of motor1
+		// the ID of motor 1 to 4 is : 0x201(513)/0x202(514)/0x203(515)/0x204(516)
 		if (!can_received[frame_recv.can_id - 513])
 		{
+			// timer
 			clock_gettime(CLOCK_REALTIME, &time1);
 			time_step_later[frame_recv.can_id - 513] = time1.tv_sec + time1.tv_nsec / 1000000000.0;
+			
+			// the CAN data is a 8 length char array.
+			// data[0]/data[1]: high/low byte of motor angle
+			// data[2]/data[3]: high/low byte of motor speed
+			// data[4]/data[5]: high/low byte of motor torque
+			// data[6]/data[7]: NULL
+			
 			rpm = 0;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[2] << 8;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[3];
+			
+			// check the rotation direction of motor
 			if (rpm >= speedDirectionBoundary)
 				speed_meas[frame_recv.can_id - 513] = -(maxBoundary - rpm) / drive_ratio;
 			else
 				speed_meas[frame_recv.can_id - 513] = rpm / drive_ratio;
 			can_received[frame_recv.can_id - 513] = true;
 			
+			//receive angle and torque data, put the data into object SendMotorData
 			angle = 0;
 			angle |= (int16_t)(unsigned char)frame_recv.data[0] << 8;
 			angle |= (int16_t)(unsigned char)frame_recv.data[1];
@@ -108,6 +128,7 @@ void CAN_control(int s)
 		}
 		if (i == 4)
 		{
+			// reset bool array can_received
 			for (int k = 0; k < 4; ++k)
 				can_received[k] = 0;
 			break;
@@ -123,12 +144,19 @@ void CAN_control(int s)
 		time_step_former[i] = time_step_later[i];
 		error[i] = desire_speed[i] - speed_meas[i];
 		
-		//if (dt[i] < 0.002)
-			command[i] += k_p * (error[i] - error_former[i]) + k_i * error[i];
-		
-		
+		//PID controller
+		command[i] += k_p * (error[i] - error_former[i]) + k_i * error[i];
 		error_former[i] = error[i];
 		
+		/*
+		set command accorrding to the direction
+		the command is the current value of motor
+		data is stored in a 8 length array frame_send.data
+		data[0]/data[1]: high/low byte of motor1 current command
+		data[2]/data[3]: high/low byte of motor2 current command
+		data[4]/data[5]: high/low byte of motor3 current command
+		data[6]/data[7]: high/low byte of motor4 current command
+		*/
 		if(command[i] >= 0)
 		{
 			if(command[i] > PID_H)
@@ -151,10 +179,12 @@ void CAN_control(int s)
 	}
 	printf("\n");
 	
+	// write command to CAN bus
 	write(s, &frame_send, sizeof(can_frame)); 
 
 }
 
+// Initialize control loop
 void control_init(int s)
 {
 	int i = 0;	
@@ -195,7 +225,8 @@ int main(int argc, char **argv)
 	int s; 
 	struct sockaddr_can addr;
 	struct ifreq ifr;
-
+	
+	// Open CAN bus
 	system("sudo slcand -o -c -s8 /dev/ttyACM0");
 	system("sudo ip link set up slcan0");
 
@@ -256,6 +287,7 @@ int main(int argc, char **argv)
 
 	while(1)
 	{
+		/*********************UDP_Receiving*********************/
 		pos = 0;
 		j = 0;
 		int datalength = recvfrom(sock_recv, buf_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
@@ -289,9 +321,9 @@ int main(int argc, char **argv)
 		}
 		cout << endl;
 		*/
-
+		/*******************************************************/
 		CAN_control(s);
-
+		/*********************UDP_Sending**********************/
 		send.clear();
 		send.push_back(SendMotorData);
 		msgpack::sbuffer sbuf;
