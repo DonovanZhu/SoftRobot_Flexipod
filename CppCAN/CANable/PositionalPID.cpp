@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <time.h>
+#include <signal.h>
+#include <sys/time.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -18,20 +19,18 @@
 #include <iomanip>
 #include <iostream>
 
-
-
 #define PID_H 10000.0
 #define PID_L -10000.0
 #define speedDirectionBoundary 32768.0
 #define maxBoundary 65535.0
 #define drive_ratio 36.0
-#define k_p 7.0
-#define k_i 0.0015
-#define k_d 0.00006
+#define k_p 65.0
+#define k_i 1.0
+#define k_d 0.00
 /*
-#define k_p 11.0
-#define k_i 0.22
-#define k_d 0.0032
+#define k_p 52.0
+#define k_i 1.0
+#define k_d 0.00
 */
 using namespace std;
 
@@ -55,9 +54,14 @@ struct can_frame frame_send;
 char buf_send[200];
 char buf_recv[200];
 
+struct timespec time1;
+struct timespec time2;
+
+double x = 0.0;
+
 class MotorSpeed {
 public:
-	double rpm[4];
+	int rpm[4];
 	MSGPACK_DEFINE(rpm);
 };
 
@@ -69,7 +73,6 @@ public:
 	MSGPACK_DEFINE(angle, rpm, torque);
 };
 
-
 MotorData SendMotorData;
 
 void CAN_control(int s)
@@ -78,9 +81,11 @@ void CAN_control(int s)
 	while(1)
 	{
 		read(s, &frame_recv, sizeof(struct can_frame));
+
 		if (!can_received[frame_recv.can_id - 513])
 		{
-			time_step_later[frame_recv.can_id - 513] = clock();
+			clock_gettime(CLOCK_REALTIME, &time1);
+			time_step_later[frame_recv.can_id - 513] = time1.tv_sec + time1.tv_nsec / 1000000000.0;
 			rpm = 0;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[2] << 8;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[3];
@@ -111,19 +116,23 @@ void CAN_control(int s)
 	
 	for (i = 0; i < 4; ++i)
 	{
-		dt[i] = (double)(time_step_later[i] - time_step_former[i]) / CLOCKS_PER_SEC;
+		dt[i] = time_step_later[i] - time_step_former[i];
 		printf("v = %f  ",speed_meas[i]);
 		printf("t = %f  ", dt[i]);
-
 		/***********************PID***********************/
 		time_step_former[i] = time_step_later[i];
 		error[i] = desire_speed[i] - speed_meas[i];
 		
 		
-		if (dt[i] < 0.0002)
+		if (dt[i] < 0.002 && error[i] < 50.0)
 		{
 			error_sum[i] += error[i];
-			command[i] = k_p * (error[i] + error_sum[i] * k_i + k_d * (error[i] - error_former[i]) / dt[i]);
+			command[i] = k_p * (error[i] + error_sum[i] * 0.001 + k_d * (error[i] - error_former[i]) / dt[i]);
+		}
+		else if (dt[i] < 0.002 && error[i] >= 50.0)
+		{
+			error_sum[i] += error[i];
+			command[i] = 0.5 * k_p * error[i];
 		}
 		error_former[i] = error[i];
 		
@@ -146,11 +155,9 @@ void CAN_control(int s)
 			frame_send.data[2 * i + 1] = v & 0x00ff;
 			frame_send.data[2 * i] = (v >> 8) & 0x00ff;
 		}
-		
-
 	}
 	printf("\n");
-
+	
 	write(s, &frame_send, sizeof(can_frame)); 
 
 }
@@ -160,10 +167,12 @@ void control_init(int s)
 	int i = 0;	
 	while(1)
 	{
+
 		read(s, &frame_recv, sizeof(struct can_frame));
 		if (!can_received[frame_recv.can_id - 513])
 		{
-			time_step_later[frame_recv.can_id - 513] = clock();
+			clock_gettime(CLOCK_REALTIME, &time1);
+			time_step_former[frame_recv.can_id - 513] = time1.tv_sec + time1.tv_nsec / 1000000000.0;
 			rpm = 0;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[2] << 8;
 			rpm |= (int16_t)(unsigned char)frame_recv.data[3];
@@ -183,20 +192,20 @@ void control_init(int s)
 			}
 			break;
 		}
+		
 	}
 }
 
 int main(int argc, char **argv)
 {
 /***********************CAN_Bus_Initializing***********************/
-
 	int s; 
 	struct sockaddr_can addr;
 	struct ifreq ifr;
 
 	system("sudo slcand -o -c -s8 /dev/ttyACM0");
 	system("sudo ip link set up slcan0");
-    
+
 	s = socket(PF_CAN, SOCK_RAW, CAN_RAW);
 
 	strcpy(ifr.ifr_name, "slcan0" );
@@ -224,11 +233,8 @@ int main(int argc, char **argv)
 	server_recv.sin_addr.s_addr = INADDR_ANY;
 	server_recv.sin_port = htons(1000);
 	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
-		   
 	fromlen = sizeof(struct sockaddr_in);
-
 	vector<MotorSpeed> recv;
-
 /******************************************************************/
 
 /*********************UDP_Sending_Initializing*********************/
@@ -245,17 +251,39 @@ int main(int argc, char **argv)
 	inet_pton(AF_INET, "192.168.0.67", &client_send.sin_addr);
 	bind(sock_send,(struct sockaddr *)&client_send,length_send);
 	vector<MotorData> send;
-
-
 /******************************************************************/
-
 	control_init(s);
 	
 	frame_send.can_id = 0x200;
 	frame_send.can_dlc = 8;
+	char num[10];
+	int pos;
+	int k;
+	int j;
+
 	while(1)
 	{
+		pos = 0;
+		j = 0;
 		int datalength = recvfrom(sock_recv, buf_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
+		// Char array:
+		for (int i = 0; i < datalength; ++i)
+		{
+			if (buf_recv[i] == ',')
+			{
+				memset(num, 0, sizeof(num));
+				strncpy(num, buf_recv + pos, i - pos);
+				k = atoi(num);
+				desire_speed[j] = (double)(k - 0x4000) / (double)(0x4000) * 400.0;
+				//desire_speed[0] = 200.0;
+				pos = i + 1;
+				//printf("%f ", desire_speed[j]);
+				j++;
+			}
+		}
+		
+		// Msgpack:
+		/*
 		msgpack::object_handle oh = msgpack::unpack(buf_recv, datalength);
 		
 		msgpack::object obj = oh.get();
@@ -264,15 +292,19 @@ int main(int argc, char **argv)
 		for (int i = 0; i < 4; i++)
 		{
 			desire_speed[i] = recv[0].rpm[i];
+			cout << desire_speed[i] << " ";
 		}
-		
+		cout << endl;
+		*/
+
 		CAN_control(s);
-		
+
 		send.clear();
 		send.push_back(SendMotorData);
 		msgpack::sbuffer sbuf;
 		msgpack::pack(sbuf, send);
 		sendto(sock_send, sbuf.data(), sbuf.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
+		//usleep(1000);
 	}
 	
 	printf("\r\n");
