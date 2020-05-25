@@ -300,7 +300,6 @@ int main(int argc, char **argv)
 				strncpy(num, buf_recv + pos, i - pos);
 				k = atoi(num);
 				desire_speed[j] = (double)(k - 0x4000) / (double)(0x4000) * 400.0;
-				desire_speed[0] = 200.0;
 				pos = i + 1;
 				//printf("%f ", desire_speed[j]);
 				j++;
