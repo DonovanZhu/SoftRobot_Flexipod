@@ -17,16 +17,16 @@
 // sizeof(Teensy_comm)=64 to match USB 1.0 buffer size
 typedef struct {
   uint32_t      magic;                        // Magic number
-  uint8_t       deg[MAX_ESC];          // Motors rotation angle(°C)
-  int16_t       rpm[MAX_ESC];          // Motors rpm
-  uint16_t      amp[MAX_ESC];          // Motors current
+  double        deg[MAX_ESC];          // Motors rotation angle(°C)
+  double        rpm[MAX_ESC];          // Motors rpm
+  double        amp[MAX_ESC];          // Motors current
 } Teensycomm_struct_t;
 
 // Host->teensy communication data structure
 // sizeof(RPi_comm)=64 to match USB 1.0 buffer size
 typedef struct {
   uint32_t      magic;                        // Magic number
-  int16_t       RPM[MAX_ESC];        // Velocity reference (10 rpm)
+  double        RPM[MAX_ESC];        // Velocity reference (10 rpm)
 } RPicomm_struct_t;
 
 #endif
