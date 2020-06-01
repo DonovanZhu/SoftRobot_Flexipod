@@ -40,7 +40,17 @@ using namespace std;
 #define HOST_BAUDRATE       B115200                 // Serial baudrate
 #define HOST_READ_TIMEOUT   5                       // Tenth of second
 #define HOST_STEP_REF       200                     // Velocity reference step size (10 rpm motor)
-
+#define PID_H 10000.0 //Upper limit of PID output
+#define PID_L -10000.0 //lower limit of PID output
+#define drive_ratio 36.0 // Drive ratio of motor gear box
+#define speedDirectionBoundary 32768.0 //32768(dec) = 0x 8000
+// if speed command higher than 32768, the motor rotates clockwise
+// if speed command lower than 32768, the motor rotates counter-clockwise
+#define maxBoundary 65535.0 // 0xffff, command upper limit
+// PID:
+#define k_p 24.5
+#define k_i 0.035
+#define k_d 0.00
 
 // Globals
 int Host_fd[HOST_MAX_DEVICES] = { HOST_ERROR_FD, 
@@ -368,7 +378,7 @@ int main( int argc, char *argv[] ) {
 	}
 
 	// Testing roundtrip serial link duration
-	data_num = 0;
+
 	while (1) {
 		pos = 0;
 		j = 0;
@@ -381,9 +391,7 @@ int main( int argc, char *argv[] ) {
 				memset(num, 0, sizeof(num));
 				strncpy(num, buf_UDP_recv + pos, i - pos);
 				desire_speed[j] = atoi(num);
-				//desire_speed[j] = (double)(atoi(num) - 0x4000) / (double)(0x4000) * 400.0;
 				pos = i + 1;
-				//printf("%f ", desire_speed[j]);
 				j++;
 			}
 		}
@@ -398,13 +406,15 @@ int main( int argc, char *argv[] ) {
 		// Display telemetry
 		for ( k = 0; k < NB_ESC; k++ )
 		{
-			fprintf( stderr, "#:%d.%d\tdeg:%d\trpm:%f\tA:%d\n",
-			data_num, k, comm->deg[k], (double)(comm->rpm[k] - 0x4000) / (double)(0x4000) * 400.0, comm->amp[k]);
-			SendMotorData.angle[k] = comm->deg[k];
-			SendMotorData.rpm[k] = (double)(comm->rpm[k] - 0x4000) / (double)(0x4000) * 400.0;
+			SendMotorData.angle[k] = (double)comm->deg[k] / 8191.0 * 360.0;
+			if (comm->rpm[k] >= speedDirectionBoundary)
+				SendMotorData.rpm[k] = -(maxBoundary - comm->rpm[k]) / drive_ratio;
+			else
+				SendMotorData.rpm[k] = comm->rpm[k] / drive_ratio;
 			SendMotorData.torque[k] = comm->amp[k];
+			fprintf( stderr, "deg:%f\trpm:%f\tA:%f\n",SendMotorData.angle[k], SendMotorData.rpm[k], SendMotorData.torque[k]);
 		}
-		data_num++;
+
 
 		
 		send.clear();
