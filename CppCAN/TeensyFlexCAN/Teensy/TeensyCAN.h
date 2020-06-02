@@ -1,4 +1,3 @@
-
 #ifndef __TeensyCAN_H
 #define __TeensyCAN_H
 
@@ -17,9 +16,9 @@
 // sizeof(Teensy_comm)=64 to match USB 1.0 buffer size
 typedef struct {
   uint32_t      magic;                        // Magic number
-  double        deg[MAX_ESC];          // Motors rotation angle(°C)
-  double        rpm[MAX_ESC];          // Motors rpm
-  double        amp[MAX_ESC];          // Motors current
+  int       deg[MAX_ESC];          // Motors rotation angle(°C)
+  int       rpm[MAX_ESC];          // Motors rpm
+  int       amp[MAX_ESC];          // Motors current
 } Teensycomm_struct_t;
 
 // Host->teensy communication data structure
