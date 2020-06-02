@@ -30,7 +30,7 @@ using namespace std;
 // Flags
 #define HOST_STANDALONE                             // main is added
 
-#define HOST_MAX_DEVICES	5                       // Max number of teensys
+#define HOST_MAX_DEVICES	1                       // Max number of teensys
 //#define HOST_MODEMDEVICE	"/dev/serial/by-id/usb-Teensyduino_USB_Serial_6582050-if00"
 #define HOST_MODEMDEVICE    "/dev/ttyACM0"
 #define HOST_DEV_SERIALNB	6582050              	// Serial number of the teensy
@@ -39,7 +39,6 @@ using namespace std;
 
 #define HOST_BAUDRATE       B115200                 // Serial baudrate
 #define HOST_READ_TIMEOUT   5                       // Tenth of second
-#define HOST_STEP_REF       200                     // Velocity reference step size (10 rpm motor)
 #define PID_H 10000.0 //Upper limit of PID output
 #define PID_L -10000.0 //lower limit of PID output
 #define drive_ratio 36.0 // Drive ratio of motor gear box
@@ -48,18 +47,12 @@ using namespace std;
 // if speed command lower than 32768, the motor rotates counter-clockwise
 #define maxBoundary 65535.0 // 0xffff, command upper limit
 // PID:
-#define k_p 24.5
-#define k_i 0.035
-#define k_d 0.00
+
 
 // Globals
-int Host_fd[HOST_MAX_DEVICES] = { HOST_ERROR_FD, 
-								HOST_ERROR_FD,
-								HOST_ERROR_FD,
-								HOST_ERROR_FD,
-								HOST_ERROR_FD };        // Serial port file descriptor
+int Host_fd[HOST_MAX_DEVICES] = { HOST_ERROR_FD};        // Serial port file descriptor
                             
-char Host_devname[HOST_MAX_DEVICES][PATH_MAX] = { "", "", "", "", "" }; // Serial port devname used to get fd with open
+char Host_devname[HOST_MAX_DEVICES][PATH_MAX] = { ""}; // Serial port devname used to get fd with open
                             
 struct termios Host_oldtio[HOST_MAX_DEVICES];  // Backup of initial tty configuration
 
@@ -70,11 +63,11 @@ RPicomm_struct_t	RPi_comm[HOST_MAX_DEVICES];
 char buf_UDP_recv[200]; // for holding UDP data received from Joystick
 
 
-int desire_speed[4] = {0, 0, 0, 0};
+double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};
 
 class MotorSpeed {
 public:
-	int rpm[4];
+	double rpm[4];
 	MSGPACK_DEFINE(rpm);
 };
 
@@ -90,10 +83,6 @@ public:
 
 // set a object for sending UDP through msgpack
 MotorData SendMotorData;
-
-
-
-
 
 
 //
@@ -232,7 +221,7 @@ void Host_release_port( uint32_t serial_nb ) {
 
 // Manage communication with the teensy connected to portname
 int Host_comm_update( uint32_t            serial_nb,
-                      int16_t             *RPM,
+                      double              *RPM,
                       Teensycomm_struct_t **comm ) {
                       
 	int                 i, ret, res = 0, fd_idx;
@@ -263,7 +252,7 @@ int Host_comm_update( uint32_t            serial_nb,
 	fsync( Host_fd[fd_idx] );
 
 	// Get current time
-	clock_gettime( CLOCK_MONOTONIC, &start );
+	// clock_gettime( CLOCK_MONOTONIC, &start );
 
 	// Reset byte counter and magic number
 	res = 0;
@@ -274,14 +263,14 @@ int Host_comm_update( uint32_t            serial_nb,
 		ret = read( Host_fd[fd_idx], &pt_in[res], 1 );
 
 		// Data received
-		if ( ret > 0 ) {
-		res += ret;
-		}
+		if ( ret > 0 ) 
+			res += ret;
+		
 
 		// Read error
 		if ( ret < 0 )
-		break;
-
+			break;
+		/*
 		// Compute time elapsed
 		clock_gettime( CLOCK_MONOTONIC, &cur );
 		elapsed_us =  ( cur.tv_sec * 1e6 + cur.tv_nsec / 1e3 ) -
@@ -290,6 +279,7 @@ int Host_comm_update( uint32_t            serial_nb,
 		// Timeout
 		if ( elapsed_us / 100000 > HOST_READ_TIMEOUT )
 			break;
+		*/
 
 	} while ( res < sizeof( Teensy_comm[fd_idx] ) );
 
@@ -316,9 +306,9 @@ int Host_comm_update( uint32_t            serial_nb,
   
 	// Print rountrip duration
 
-	#ifdef HOST_STANDALONE
-	fprintf( stderr, "Delay: %llu us\n", elapsed_us );
-	#endif
+	//#ifdef HOST_STANDALONE
+	//fprintf( stderr, "Delay: %llu us\n", elapsed_us );
+	//#endif
 
 	return 0;
 }
@@ -363,13 +353,8 @@ int main( int argc, char *argv[] ) {
 
 	int data_num, k, ret, j, pos;
 	char num[10];
-	int16_t RPM[MAX_ESC];
+	double RPM[MAX_ESC] = {0.0, 0.0, 0.0, 0.0};
 	Teensycomm_struct_t *comm;
-  
-	// Initialize tunable PID data
-	for ( int i = 0; i < MAX_ESC; i++ ) {
-		RPM[i] = HOST_STEP_REF;
-	}
   
 	// Initialize serial port
 	if ( Host_init_port( HOST_DEV_SERIALNB ) ) {
@@ -384,6 +369,7 @@ int main( int argc, char *argv[] ) {
 		j = 0;
 		int datalength = recvfrom(sock_recv, buf_UDP_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
 		// Char array:
+		/*
 		for (int i = 0; i < datalength; ++i)
 		{
 			if (buf_UDP_recv[i] == ',')
@@ -395,8 +381,16 @@ int main( int argc, char *argv[] ) {
 				j++;
 			}
 		}
+		*/
 		//printf("\n");
-
+		msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
+		
+		msgpack::object obj = oh.get();
+		recv.clear();
+		obj.convert(recv);
+		for (int i = 0; i < 4; i++)
+			desire_speed[i] = recv[0].rpm[i];
+		//cout << endl;
 		// Serial exchange with teensy
 		if (( ret = Host_comm_update( HOST_DEV_SERIALNB, RPM, &comm ))) {
 			fprintf( stderr, "Error %d in Host_comm_update.\n", ret );
@@ -408,10 +402,10 @@ int main( int argc, char *argv[] ) {
 		{
 			SendMotorData.angle[k] = (double)comm->deg[k] / 8191.0 * 360.0;
 			if (comm->rpm[k] >= speedDirectionBoundary)
-				SendMotorData.rpm[k] = -(maxBoundary - comm->rpm[k]) / drive_ratio;
+				SendMotorData.rpm[k] = -(double)(maxBoundary - comm->rpm[k]) / drive_ratio;
 			else
-				SendMotorData.rpm[k] = comm->rpm[k] / drive_ratio;
-			SendMotorData.torque[k] = comm->amp[k];
+				SendMotorData.rpm[k] = (double)comm->rpm[k] / drive_ratio;
+			SendMotorData.torque[k] = (double)comm->amp[k];
 			fprintf( stderr, "deg:%f\trpm:%f\tA:%f\n",SendMotorData.angle[k], SendMotorData.rpm[k], SendMotorData.torque[k]);
 		}
 
