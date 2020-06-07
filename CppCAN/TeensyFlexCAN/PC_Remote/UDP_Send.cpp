@@ -44,7 +44,7 @@ void main()
 
 	SOCKET out = socket(AF_INET, SOCK_DGRAM, 0);
 
-	char s[4] = {0.0, 0.0, 0.0, 0.0};
+	char s[4] = { 0.0, 0.0, 0.0, 0.0 };
 
 	double motor1_command = 200.0, motor2_command = 0.0, motor3_command = 0.0, motor4_command = 0.0;
 	int kbinput;
