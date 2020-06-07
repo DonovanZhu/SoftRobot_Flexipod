@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <msgpack.hpp>
-
+#include <fstream>
 
 // Include the Winsock library (lib) file
 #pragma comment (lib, "ws2_32.lib")
@@ -16,11 +16,16 @@ public:
 	double angle[4];
 	double rpm[4];
 	double torque[4];
-	MSGPACK_DEFINE(angle, rpm, torque);
+	double acc[3];
+	double gyr[3];
+	MSGPACK_DEFINE(angle, rpm, torque, acc, gyr);
 };
 
 void main()
 {
+	ofstream file;
+	file.open("flexipod_data.txt");
+
 
 	WSADATA data;
 
@@ -64,30 +69,14 @@ void main()
 		// you can convert object to UDPdata class directly
 		std::vector<MotorData> rvec;
 		obj.convert(rvec);
-
-		/*
-		for (int i = 0; i < 4; i++)
-		{
-			printf("%f", rvec[0].angle[i]);
-			printf(" ");
-		}
-		printf("\n");
-
-		for (int i = 0; i < 4; i++)
-		{
-			printf("%f", rvec[0].rpm[i]);
-			printf(" ");
-		}
-		printf("\n");
-
-		for (int i = 0; i < 4; i++)
-		{
-			printf("%f", rvec[0].torque[i]);
-			printf(" ");
-		}
-		printf("\n");
-		*/
 		
+		file << rvec[0].angle[0] << "\t" << rvec[0].angle[1] << "\t" << rvec[0].angle[2] << "\t" << rvec[0].angle[3] << "\t";
+		file << rvec[0].rpm[0] << "\t" << rvec[0].rpm[1] << "\t" << rvec[0].rpm[2] << "\t" << rvec[0].rpm[3] << "\t";
+		file << rvec[0].torque[0] << "\t" << rvec[0].torque[1] << "\t" << rvec[0].torque[2] << "\t" << rvec[0].torque[3] << "\t";
+		file << rvec[0].acc[0] << "\t" << rvec[0].acc[1] << "\t" << rvec[0].acc[2] << "\t";
+		file << rvec[0].gyr[0] << "\t" << rvec[0].gyr[1] << "\t" << rvec[0].gyr[2] << "\n";
+
+
 		if (step % 20 == 0)
 		{
 			for (int i = 0; i < 4; i++)
@@ -102,7 +91,7 @@ void main()
 		
 
 	}
-
+	file.close();
 	// Close socket
 	closesocket(in);
 
