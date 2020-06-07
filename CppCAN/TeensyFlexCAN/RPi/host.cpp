@@ -75,10 +75,12 @@ public:
 // class for sending command to PC if using msgpack
 class MotorData {
 public:
-	double angle[4]; //degree
-	double rpm[4]; //rpm
-	double torque[4]; //N*m
-	MSGPACK_DEFINE(angle, rpm, torque);
+	double angle[4]; 	//degree
+	double rpm[4]; 		//rpm
+	double torque[4]; 	//N*m
+	double acc[3];
+	double gyr[3];
+	MSGPACK_DEFINE(angle, rpm, torque, acc, gyr);
 };
 
 // set a object for sending UDP through msgpack
@@ -174,7 +176,7 @@ int Host_init_port( uint32_t serial_nb ) {
 	strncpy( Host_devname[fd_idx], portname, PATH_MAX );
   
 	// Initialize corresponding data structure
-	for ( i = 0; i < MAX_ESC; i++ ) {
+	for ( i = 0; i < NB_ESC; i++ ) {
 		RPi_comm[fd_idx].magic = COMM_MAGIC;
 		RPi_comm[fd_idx].RPM[i] =  0;
 	}
@@ -237,7 +239,7 @@ int Host_comm_update( uint32_t            serial_nb,
 		return HOST_ERROR_FD;
   
 	// Update output data structue
-	for ( i = 0; i < MAX_ESC; i++ ) {
+	for ( i = 0; i < NB_ESC; i++ ) {
 		RPi_comm[fd_idx].RPM[i] = desire_speed[i];
 	}
    
@@ -353,7 +355,7 @@ int main( int argc, char *argv[] ) {
 
 	int data_num, k, ret, j, pos;
 	char num[10];
-	double RPM[MAX_ESC] = {0.0, 0.0, 0.0, 0.0};
+	double RPM[NB_ESC] = {0.0, 0.0, 0.0, 0.0};
 	Teensycomm_struct_t *comm;
   
 	// Initialize serial port
@@ -388,7 +390,7 @@ int main( int argc, char *argv[] ) {
 		msgpack::object obj = oh.get();
 		recv.clear();
 		obj.convert(recv);
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < 4; ++i)
 			desire_speed[i] = recv[0].rpm[i];
 		//cout << endl;
 		// Serial exchange with teensy
@@ -398,7 +400,8 @@ int main( int argc, char *argv[] ) {
 		}
 
 		// Display telemetry
-		for ( k = 0; k < NB_ESC; k++ )
+		
+		for (k = 0; k < NB_ESC; ++k)
 		{
 			SendMotorData.angle[k] = (double)comm->deg[k] / 8191.0 * 360.0;
 			if (comm->rpm[k] >= speedDirectionBoundary)
@@ -406,11 +409,14 @@ int main( int argc, char *argv[] ) {
 			else
 				SendMotorData.rpm[k] = (double)comm->rpm[k] / drive_ratio;
 			SendMotorData.torque[k] = (double)comm->amp[k];
-			fprintf( stderr, "deg:%f\trpm:%f\tA:%f\n",SendMotorData.angle[k], SendMotorData.rpm[k], SendMotorData.torque[k]);
+			//fprintf( stderr, "deg:%f\trpm:%f\tA:%f\n",SendMotorData.angle[k], SendMotorData.rpm[k], SendMotorData.torque[k]);
 		}
-
-
-		
+		for (k = 0; k < 3; ++k)
+		{
+			SendMotorData.acc[k] = (double)comm->acc[k];
+			SendMotorData.gyr[k] = (double)comm->gyr[k];
+		}
+		printf("%f\n", comm->acc[0]);
 		send.clear();
 		send.push_back(SendMotorData);
 		msgpack::sbuffer sbuf;
