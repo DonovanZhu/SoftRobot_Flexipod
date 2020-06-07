@@ -1,6 +1,8 @@
+#include <Wire.h>
 #include <Arduino.h>
 #include <FlexCAN_T4.h>
 #include "TeensyCAN.h"
+#include "MPU9250.h"
 FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN;
 
 #define PID_H 10000.0
@@ -8,14 +10,14 @@ FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN;
 #define speedDirectionBoundary 32768.0
 #define maxBoundary 65535.0
 #define drive_ratio 36.0
-#define k_p 31.5
-#define k_i 0.08
+#define k_p 31.0
+#define k_i 0.075
 
+MPU9250 IMU(Wire,0x68);
+int status;
 
 // Globals
 bool  can_received[4]     = {0, 0, 0, 0};
-//int   time_step[4]        = {0, 0, 0, 0};
-//int   time_step_former[4] = {0, 0, 0, 0};
 int angle_meas[4]         = {0, 0, 0, 0};
 int torque_meas[4]        = {0, 0, 0, 0};
 int w_meas[4]             = {0, 0, 0, 0};
@@ -27,6 +29,8 @@ double dt[4]                 = {0.0, 0.0, 0.0, 0.0};
 double error[4]              = {0.0, 0.0, 0.0, 0.0};
 double error_former[4]       = {0.0, 0.0, 0.0, 0.0};
 double error_sum[4]          = {0.0, 0.0, 0.0, 0.0};
+
+
 
 Teensycomm_struct_t Teensy_comm = {COMM_MAGIC, {}, {}, {}};
 RPicomm_struct_t    RPi_comm = {COMM_MAGIC, {}};
@@ -68,12 +72,23 @@ int Teensy_comm_update(void) {
       readCAN();
       
       PID();
+      //imu::Vector<3> acc = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+      //imu::Quaternion quat = bno.getQuat();
       
       for (i = 0; i < NB_ESC; i++) {
         Teensy_comm.deg[i] = angle_meas[i];
         Teensy_comm.rpm[i] = w_meas[i];
         Teensy_comm.amp[i] = torque_meas[i];
       }
+      IMU.readSensor();
+
+      Teensy_comm.acc[0] = IMU.getAccelX_mss();
+      Teensy_comm.acc[1] = IMU.getAccelY_mss();
+      Teensy_comm.acc[2] = IMU.getAccelZ_mss();
+
+      Teensy_comm.gyr[0] = IMU.getGyroX_rads();
+      Teensy_comm.gyr[1] = IMU.getGyroY_rads();
+      Teensy_comm.gyr[2] = IMU.getGyroZ_rads();
 
       // Send data structure to host
       Serial.write(ptout, sizeof(Teensy_comm));
@@ -90,7 +105,7 @@ void PID() {
   int i;
 
   msg_send.id = 0x200;
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < NB_ESC; ++i) {
     /*
     if (time_step[i] - time_step_former[i] < 0)
       dt[i] = (double)(time_step[i] - time_step_former[i] + 65536) / 1000000.0;
@@ -155,9 +170,9 @@ void readCAN() {
         i++;
       }
     }
-    if (i == 4)
+    if (i == NB_ESC)
     {
-      for (int k = 0; k < 4; ++k)
+      for (int k = 0; k < NB_ESC; ++k)
         can_received[k] = false;
       break;
     }
@@ -174,8 +189,8 @@ void CAN_init() {
         i++;
       }
     }
-    if (i == 4) {
-      for (int k = 0; k < 4; ++k) {
+    if (i == NB_ESC) {
+      for (int k = 0; k < NB_ESC; ++k) {
         can_received[k] = false;
       }
       break;
@@ -185,6 +200,15 @@ void CAN_init() {
 
 
 void setup() {
+  IMU.begin();
+  // setting the accelerometer full scale range to +/-8G 
+  IMU.setAccelRange(MPU9250::ACCEL_RANGE_8G);
+  // setting the gyroscope full scale range to +/-500 deg/s
+  IMU.setGyroRange(MPU9250::GYRO_RANGE_500DPS);
+  // setting DLPF bandwidth to 20 Hz
+  IMU.setDlpfBandwidth(MPU9250::DLPF_BANDWIDTH_41HZ);
+  // setting SRD to 19 for a 50 Hz update rate
+  IMU.setSrd(4);
   CAN.begin();
   CAN.setBaudRate(1000000);
   CAN_init();
@@ -192,7 +216,5 @@ void setup() {
 }
 
 void loop() {
-
   Teensy_comm_update();
-
 }
