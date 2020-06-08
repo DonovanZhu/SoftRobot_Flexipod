@@ -76,6 +76,7 @@ public:
 	double angle[4]; 	// Rotation angle, unit degree
 	double rpm[4]; 		// Rotation speed, unit rpm
 	double torque[4]; 	// Rotation torque, unit N*m
+	double command[4];  // Desired speed, unit rpm
 	double acc[3];		// Acceleration of IMU, unit m/s^2
 	double gyr[3];		// Gyroscope, unit deg/s
 	MSGPACK_DEFINE(angle, rpm, torque, acc, gyr);
@@ -415,6 +416,7 @@ int main(int argc, char *argv[]) {
 			
 			// Torque of motors:
 			SendMotorData.torque[k] = (double)comm->torque[k];
+			SendMotorData.command[k] = desire_speed[k];
 		}
 		//printf("%f\n", SendMotorData.rpm[0]);
 		// Data from IMU:
@@ -437,3 +439,4 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 }
+
