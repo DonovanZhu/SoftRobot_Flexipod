@@ -79,7 +79,7 @@ public:
 	double command[4];  // Desired speed, unit rpm
 	double acc[3];		// Acceleration of IMU, unit m/s^2
 	double gyr[3];		// Gyroscope, unit deg/s
-	MSGPACK_DEFINE(angle, rpm, torque, acc, gyr);
+	MSGPACK_DEFINE(angle, rpm, torque, command, acc, gyr);
 };
 // set a object for sending UDP through msgpack
 MotorData SendMotorData;
