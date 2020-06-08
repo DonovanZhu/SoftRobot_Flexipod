@@ -33,8 +33,8 @@ int status; // Use for start IMU
 
 // Globals
 bool    can_received[4]       = {0, 0, 0, 0};   // For checking the data receiving status of each motor
-int     angle_meas[4]         = {0, 0, 0, 0};   // Angle measured from encoder of each motor's rotor, which is an int between 0 - 0x1fff
-int     w_meas[4]             = {0, 0, 0, 0};   // Speed measured from encoder of each motor's rotor
+int     angle_meas[4]         = {0, 0, 0, 0};   // Angle measured from encoder of each motor's rotor, which is an int between 0 - 0x1fff, unit degree
+int     w_meas[4]             = {0, 0, 0, 0};   // Speed measured from encoder of each motor's rotor, unit rpm
 int     torque_meas[4]        = {0, 0, 0, 0};   // Torque measured from encoder of each motor
 double  speed_meas[4]         = {0.0, 0.0, 0.0, 0.0};   // The speed of motor shaft
 double  desired_speed[NB_ESC] = {0.0, 0.0, 0.0, 0.0};   // The desired speed of motors
