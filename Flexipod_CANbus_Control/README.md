@@ -1,11 +1,17 @@
-# FlexCAN_T4
-FlexCAN Library for Teensy 4
+# CAN bus motor Control
 
-https://forum.pjrc.com/threads/56035-FlexCAN_T4-FlexCAN-for-Teensy-4
+## Hardware
 
-Designed for Teensy 4.0, compatibility for Teensy 3.x.
-Based on a redesigned model of IFCT from the ground up.
+Brushless DC motor: DJI M2006 P36
+Electronic Speed Controller: DJI C610
+Controller: Teensy 4.0
+CAN Transceiver: CJMCU-2551 MCP2551
+Voltage Stepdown Regulator: Pololu 5V, 5A Step-Down Voltage Regulator D24V50F5
+IMU: MPU9255
+Data transport: Rapsberry Pi 4 Model B and PC
 
-Your sketch should include the header to use it: 
+## Software
+### Teensy
+
 
 `#include <FlexCAN_T4.h>`
