@@ -17,6 +17,7 @@ https://github.com/tonton81/FlexCAN_T4
 https://github.com/bolderflight/MPU9250
 
 Include this header to use FlexCAN_T4:
+
 `#include <FlexCAN_T4.h>`
 
 To use MPU9250 library, download MPU9250.h and MPU9250.cpp from the [repository](https://github.com/bolderflight/MPU9250)
