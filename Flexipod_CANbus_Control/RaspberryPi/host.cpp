@@ -28,20 +28,6 @@
 
 using namespace std;
 
-//#define  HOST_MODEMDEVICE		"/dev/serial/by-id/usb-Teensyduino_USB_Serial_6582050-if00"
-#define HOST_MODEMDEVICE    	"/dev/ttyACM0"	// Name of USB port
-#define HOST_DEV_SERIALNB		6582050			// Serial number of the teensy, check this number by using terminal
-#define HOST_DEV_SERIALLG		10				// Max length of a serial number
-#define HOST_SERIAL_DEV_DIR		"/dev/serial/by-id/"
-#define HOST_BAUDRATE       	B115200			// Serial baudrate
-
-#define drive_ratio 			36.0 			// Drive ratio of motor gear box
-#define speedDirectionBoundary 	32768.0 		// 32768(dec) = 0x 8000
-// if speed command higher than 32768, the motor rotates clockwise
-// if speed command lower than 32768, the motor rotates counter-clockwise
-#define maxBoundary 			65535.0 		// 0xffff, command upper limit
-
-
 // Globals
 int Host_fd = HOST_ERROR_FD;        // Serial port file descriptor
                             
@@ -55,16 +41,16 @@ RPicomm_struct_t	RPi_comm;		// A data struct sent to Teensy
 char buf_UDP_recv[200]; 			// for holding UDP data
 
 
-double desire_speed[4] = {0.0, 0.0, 0.0, 0.0};		// The deisred speed
-double angle_former[4] = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's rotor in the former step
-double angle_cur[4]    = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's rotor in the current step
-double angle_sum[4]    = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's shaft in the current step
-bool   angle_init[4]   = {true, true, true, true};	// To mark the first step of rotation angle
+double desire_speed[NB_ESC] = {0.0, 0.0, 0.0, 0.0};		// The deisred speed
+double angle_former[NB_ESC] = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's rotor in the former step
+double angle_cur[NB_ESC]    = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's rotor in the current step
+double angle_sum[NB_ESC]    = {0.0, 0.0, 0.0, 0.0};		// Rotation angle of each motor's shaft in the current step
+bool   angle_init[NB_ESC]   = {true, true, true, true};	// To mark the first step of rotation angle
 
 // Receiving the desired speed data by UDP and hold it in this class
 class MotorSpeed {
 public:
-	double rpm[4];
+	double rpm[NB_ESC];
 	MSGPACK_DEFINE(rpm);
 };
 
@@ -73,12 +59,12 @@ public:
 //
 class MotorData {
 public:
-	double angle[4]; 	// Rotation angle, unit degree
-	double rpm[4]; 		// Rotation speed, unit rpm
-	double torque[4]; 	// Rotation torque, unit N*m
-	double command[4];  // Desired speed, unit rpm
-	double acc[3];		// Acceleration of IMU, unit m/s^2
-	double gyr[3];		// Gyroscope, unit deg/s
+	double angle[NB_ESC]; 		// Rotation angle, unit degree
+	double rpm[NB_ESC]; 		// Rotation speed, unit rpm
+	double torque[NB_ESC]; 		// Rotation torque, unit N*m
+	double command[NB_ESC];  	// Desired speed, unit rpm
+	double acc[3];				// Acceleration of IMU, unit m/s^2
+	double gyr[3];				// Gyroscope, unit deg/s
 	MSGPACK_DEFINE(angle, rpm, torque, command, acc, gyr);
 };
 // set a object for sending UDP through msgpack
@@ -110,7 +96,7 @@ char *Host_name_from_serial(uint32_t serial_nb) {
 			return portname;
 			}
 		}
-	closedir( d );
+	closedir(d);
 	}
 	return NULL;
 }
@@ -121,7 +107,6 @@ char *Host_name_from_serial(uint32_t serial_nb) {
 // Returns -1 if no matching fd is found.
 //
 int Host_get_fd(uint32_t serial_nb) {
-	int   i;
 	char  serial_nb_char[HOST_DEV_SERIALLG];
   
 	// Convert serial number into string
@@ -140,7 +125,6 @@ int Host_get_fd(uint32_t serial_nb) {
 int Host_init_port(uint32_t serial_nb) {
 	struct	termios newtio;
 	int     check_fd;
-	int     i;
 	char    *portname;
   
 	// Check if device plugged in
@@ -161,8 +145,7 @@ int Host_init_port(uint32_t serial_nb) {
 	strncpy(Host_devname, portname, PATH_MAX);
   
 	// Initialize corresponding data structure
-	for (i = 0; i < NB_ESC; i++) {
-		RPi_comm.magic = COMM_MAGIC;
+	for (int i = 0; i < NB_ESC; i++) {
 		RPi_comm.RPM[i] =  0;
 	}
 
@@ -214,14 +197,14 @@ int Host_comm_update( uint32_t            serial_nb,
                       double              *RPM,
                       Teensycomm_struct_t **comm ) {
                       
-	int                 i, ret, res = 0;
+	int                 ret, res = 0;
 	uint8_t             *pt_in;
   
 	// Get fd index
 	Host_get_fd(serial_nb);
   
 	// Update output data structue
-	for (i = 0; i < NB_ESC; i++) {
+	for (int i = 0; i < NB_ESC; i++) {
 		RPi_comm.RPM[i] = desire_speed[i];
 	}
 
@@ -237,7 +220,6 @@ int Host_comm_update( uint32_t            serial_nb,
 
 	// Reset byte counter and magic number
 	res = 0;
-	Teensy_comm.magic = 0;
 	pt_in = (uint8_t*)(&Teensy_comm);
 
 	do {
@@ -263,58 +245,11 @@ int Host_comm_update( uint32_t            serial_nb,
         
 		return HOST_ERROR_BAD_PK_SZ;
 	}
-
-	// Check magic number
-	if (Teensy_comm.magic !=  COMM_MAGIC) {
-		fprintf( stderr, "Invalid magic number.\n" );
-		return HOST_ERROR_MAGIC;
-	}
   
 	// Return pointer to Teensy_comm structure
 	*comm = &Teensy_comm;
 
 	return 0;
-}
-
-//
-// The angle data sent from motor is the rotation angle
-// of the rotor. This function is for transfering the
-// rotor angle to shaft angle. Inputs are rotor angle,
-// index of motor and speed of motor. Results are saved
-// in list "angle_sum".
-// 
-void angle_calculate(double angle, int i, double speed) {
-	// Check the first step and initialize
-	if (angle_init[i]) {
-		angle_former[i] = angle;
-		angle_init[i] = false;
-	}
-	else {
-		// Difference between current angle and the former one
-		double d_angle = angle - angle_former[i];
-		
-		// When motor rotates in clockwise, if current angle
-		// acrosses 0 degree line, which means difference is
-		// minus, the difference should be added 360 degree to
-		// compensate. Vice versa, when motor moving in counter
-		// clockwise, the difference needs to be subtracted 360.
-		if (speed >= 0.0 && d_angle < 0.0) 
-			d_angle += 360.0;
-		
-		else if (speed < 0.0 && d_angle > 0.0) 
-			d_angle -= 360.0;
-		
-		// Angle of rotor to angle of shaft
-		angle_sum[i] += d_angle / drive_ratio;
-		
-		// Set the shaft angle between 0 - 360
-		if (angle_sum[i] >= 360.0)
-			angle_sum[i] -= 360.0;
-		else if (angle_sum[i] < 0.0)
-			angle_sum[i] += 360.0;
-
-		angle_former[i] = angle;
-	}
 }
 
 
@@ -356,8 +291,7 @@ int main(int argc, char *argv[]) {
 	vector<MotorData> send;			// For holding the sent class
 /******************************************************************/
 
-	int data_num, k, ret, j, pos;
-	char num[10];
+	int ret;
 	double RPM[NB_ESC] = {0.0, 0.0, 0.0, 0.0};
 	Teensycomm_struct_t *comm;
   
@@ -368,11 +302,14 @@ int main(int argc, char *argv[]) {
 	}
 
 	while (1) {
-		pos = 0;
-		j = 0;
+		
+		
 		int datalength = recvfrom(sock_recv, buf_UDP_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
 		// If using joystick, which sends a list of speed:
-		/*
+		#ifdef UDP_LIST
+		int j = 0;
+		int pos = 0;
+		char num[10];
 		for (int i = 0; i < datalength; ++i) {
 			if (buf_UDP_recv[i] == ',') {
 				memset(num, 0, sizeof(num));
@@ -382,17 +319,19 @@ int main(int argc, char *argv[]) {
 				j++;
 			}
 		}
-		*/
+		#endif
 		
+		#ifdef UDP_MSGPACK
 		// If using PC to send a msgpack, unpack data into class MotorSpeed type:
 		msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
 		
 		msgpack::object obj = oh.get();
 		recv.clear();
 		obj.convert(recv);	// Save data into the vector<MotorSpeed> recv
+		#endif
 		
 		// Get the desired speed
-		for (int i = 0; i < 4; ++i)
+		for (int i = 0; i < NB_ESC; ++i)
 			desire_speed[i] = recv[0].rpm[i];
 
 		// Serial exchange with teensy
@@ -402,25 +341,22 @@ int main(int argc, char *argv[]) {
 		}
 
 		// After receiving the data from Teensy, save it into class SendMotorData
-		for (k = 0; k < NB_ESC; ++k) {
+		for (int k = 0; k < NB_ESC; ++k) {
 			
 			// Speed of motors:
-			if (comm->rpm[k] >= speedDirectionBoundary)
-				SendMotorData.rpm[k] = -(double)(maxBoundary - comm->rpm[k]) / drive_ratio;
-			else
-				SendMotorData.rpm[k] = (double)comm->rpm[k] / drive_ratio;
+			SendMotorData.rpm[k] = comm->rspeed[k];
 			
 			// Angle of motors:
-			angle_calculate((double)comm->deg[k] / 8191.0 * 360.0, k, SendMotorData.rpm[k]);
-			SendMotorData.angle[k] = angle_sum[k];
+			SendMotorData.angle[k] = comm->angle[k];
 			
 			// Torque of motors:
-			SendMotorData.torque[k] = (double)comm->torque[k];
+			SendMotorData.torque[k] = comm->torque[k];
+			// Desired speed:
 			SendMotorData.command[k] = desire_speed[k];
 		}
 		//printf("%f\n", SendMotorData.rpm[0]);
 		// Data from IMU:
-		for (k = 0; k < 3; ++k) {
+		for (int k = 0; k < 3; ++k) {
 			SendMotorData.acc[k] = (double)comm->acc[k];
 			SendMotorData.gyr[k] = (double)comm->gyr[k];
 		}
