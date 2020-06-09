@@ -2,34 +2,45 @@
 #define __HOST_H
 
 // Defines
-#define HOST_ERROR_FD         -1        // Non existant file descriptor
-#define HOST_ERROR_DEV        -2        // Non existant serial device
-#define HOST_ERROR_MAX_DEV    -3        // Maximum devices limit 
-#define HOST_ERROR_WRITE_SER  -4        // Write error on serial
-#define HOST_ERROR_BAD_PK_SZ  -5        // Bad incoming packet size error
-#define HOST_ERROR_MAGIC      -6        // Bad magic number received
-#define NB_ESC				   4        // Number of ESCs
+#define UDP_LIST				0
+#define UDP_MSGPACK				1
+#define HOST_ERROR_FD         	-1			// Non existant file descriptor
+#define HOST_ERROR_DEV        	-2			// Non existant serial device
+#define HOST_ERROR_MAX_DEV    	-3			// Maximum devices limit 
+#define HOST_ERROR_WRITE_SER  	-4			// Write error on serial
+#define HOST_ERROR_BAD_PK_SZ  	-5			// Bad incoming packet size error
 
-#define USB_UART_SPEED     115200       // Baudrate of the teeensy USB serial link
+#define NB_ESC				   	4			// Number of ESCs
 
-#define COMM_MAGIC         0x43305735   // Magic number: "teensy35" in leet speech
+#define USB_UART_SPEED     		2000000		// Baudrate of the teeensy USB serial link
+
+//#define  HOST_MODEMDEVICE		"/dev/serial/by-id/usb-Teensyduino_USB_Serial_6582050-if00"
+#define HOST_MODEMDEVICE    	"/dev/ttyACM0"	// Name of USB port
+#define HOST_DEV_SERIALNB		6582050			// Serial number of the teensy, check this number by using terminal
+#define HOST_DEV_SERIALLG		10				// Max length of a serial number
+#define HOST_SERIAL_DEV_DIR		"/dev/serial/by-id/"
+#define HOST_BAUDRATE       	B115200			// Serial baudrate
+#define DRIVE_RATIO 			36.0 			// Drive ratio of motor gear box
+
+// if speed command higher than 32768, the motor rotates clockwise
+// if speed command lower than 32768, the motor rotates counter-clockwise
+#define DirectionBoundary 		32768.0 		// 32768(dec) = 0x 8000
+#define maxBoundary 			65535.0 		// 0xffff, command upper limit
 
 // Teensy->host communication data structure
 // sizeof(ESCPID_comm)=64 to match USB 1.0 buffer size
 typedef struct {
-  uint32_t      magic;                  // Magic number
-  int       	deg[NB_ESC];          	// Motors rotation angle
-  int       	rpm[NB_ESC];          	// Motors rpm
-  int			torque[NB_ESC];         // Motors torque
-  double    	acc[3];					// Acceleration in X Y Z direction, m/s^2
-  double    	gyr[3];					// Gyroscope in X Y Z direction, deg/s
+  double    angle[NB_ESC];         		// Motors rotation angle
+  double    rspeed[NB_ESC];          	// Motors rpm
+  double	torque[NB_ESC];         	// Motors torque
+  double    acc[3];						// Acceleration in X Y Z direction, m/s^2
+  double    gyr[3];						// Gyroscope in X Y Z direction, deg/s
 } Teensycomm_struct_t;
 
 // Host->teensy communication data structure
 // sizeof(RPi_comm)=64 to match USB 1.0 buffer size
 typedef struct {
-  uint32_t      magic;                  // Magic number
-  double       	RPM[NB_ESC];        	// Desired Speed, rpm
+  double    RPM[NB_ESC];        		// Desired Speed, rpm
 } RPicomm_struct_t;
 
 // Prototypes
