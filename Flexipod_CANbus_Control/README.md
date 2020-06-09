@@ -28,4 +28,4 @@ Include this header to use FlexCAN_T4:
 
 `#include <FlexCAN_T4.h>`
 
-To use MPU9250 library, download MPU9250.h and MPU9250.cpp from the [repository](https://github.com/bolderflight/MPU9250)
+To use MPU9250 library, downloading MPU9250.h and MPU9250.cpp from the [repository](https://github.com/bolderflight/MPU9250) and saving that into your teensyduino project folder, or downloading the folder Teensy
