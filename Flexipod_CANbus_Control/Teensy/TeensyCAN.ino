@@ -12,18 +12,6 @@
 FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN;
 
 //
-// if speed command higher than 32768, the motor rotates clockwise
-// if speed command lower than 32768, the motor rotates counter-clockwise
-//
-#define speedDirectionBoundary  32768.0     // 32768(dec) = 0x8000(hex)
-#define maxBoundary             65535.0     // 0xffff, command upper limit
-#define PID_H                   10000.0     // PID controller output upper limit, corresponding to 10A
-#define PID_L                   -10000.0    // PID controller output lower limit,
-#define drive_ratio             36.0        // Drive ratio of motor gear box
-#define k_p                     26          // Proportional parameter
-#define k_i                     0.040       // Integral parameter
-
-//
 // an MPU9250 object with the MPU-9250 sensor on I2C bus 0 with address 0x68
 // The MPU-9250 I2C address will be 0x68 if the AD0 pin is grounded or 0x69
 // if the AD0 pin is pulled high.
@@ -32,32 +20,28 @@ MPU9250 IMU(Wire,0x68);
 int status; // Use for start IMU
 
 // Globals
-bool    can_received[4]       = {0, 0, 0, 0};   // For checking the data receiving status of each motor
-int     angle_meas[4]         = {0, 0, 0, 0};   // Angle measured from encoder of each motor's rotor, which is an int between 0 - 0x1fff, unit degree
-int     w_meas[4]             = {0, 0, 0, 0};   // Speed measured from encoder of each motor's rotor, unit rpm
-int     torque_meas[4]        = {0, 0, 0, 0};   // Torque measured from encoder of each motor
-double  speed_meas[4]         = {0.0, 0.0, 0.0, 0.0};   // The speed of motor shaft
-double  desired_speed[NB_ESC] = {0.0, 0.0, 0.0, 0.0};   // The desired speed of motors
-double  speed_command[NB_ESC] = {0.0, 0.0, 0.0, 0.0};   // Command output of PID controller
-double  error[4]              = {0.0, 0.0, 0.0, 0.0};   // Error between input and feedback
-double  error_former[4]       = {0.0, 0.0, 0.0, 0.0};   // Error in former time step
+bool    can_received[NB_ESC]     = {0,   0,   0,   0};     // For checking the data receiving status of each motor
+double  shaft_angle_meas[NB_ESC] = {0.0, 0.0, 0.0, 0.0};   // Angle measured of each motor's shaft, unit degree, 0 - 360
+double  rotor_angle_meas[NB_ESC] = {0.0, 0.0, 0.0, 0.0};   // Angle measured of each motor's rotor, unit 1, 0 - 0x1fff, corresponding to 0 - 360
+double  torque_meas[NB_ESC]      = {0.0, 0.0, 0.0, 0.0};   // Torque measured from encoder of each motor
+double  speed_meas[NB_ESC]       = {0.0, 0.0, 0.0, 0.0};   // The speed of motor shaft
+double  desired_speed[NB_ESC]    = {0.0, 0.0, 0.0, 0.0};   // The desired speed of motors
+double  speed_command[NB_ESC]    = {0.0, 0.0, 0.0, 0.0};   // Command output of PID controller
+double  error[NB_ESC]            = {0.0, 0.0, 0.0, 0.0};   // Error between input and feedback
+double  error_former[NB_ESC]     = {0.0, 0.0, 0.0, 0.0};   // Error in former time step
 
-
-Teensycomm_struct_t Teensy_comm = {COMM_MAGIC, {}, {}, {}}; // For holding data sent to RPi
-RPicomm_struct_t    RPi_comm = {COMM_MAGIC, {}};            // For holding data received from RPi
+Teensycomm_struct_t Teensy_comm  = {{}, {}, {}, {}, {}};   // For holding data sent to RPi
+RPicomm_struct_t    RPi_comm     = {{}};                   // For holding data received from RPi
 
 // Set CAN bus message structure as CAN2.0
 CAN_message_t msg_recv; // For receiving data on CAN bus
 CAN_message_t msg_send; // For sending data on CAN bus
 
 // Manage communication with RPi
-int Teensy_comm_update(void) {
-  static int          i;
-  static uint8_t      *ptin  = (uint8_t*)(&RPi_comm),
-                      *ptout = (uint8_t*)(&Teensy_comm);
-  static int          ret;
-  static int          in_cnt = 0;
-  ret = 0;
+void Teensy_comm_update(void) {
+  static uint8_t  *ptin  = (uint8_t*)(&RPi_comm);
+  static uint8_t  *ptout = (uint8_t*)(&Teensy_comm);
+  static int      in_cnt = 0;
 
   // Read all incoming bytes available until incoming structure is complete
   while((Serial.available() > 0) && (in_cnt < (int)sizeof(RPi_comm)))
@@ -69,54 +53,41 @@ int Teensy_comm_update(void) {
     // Clear incoming bytes counter
     in_cnt = 0;
 
-    // Check the validity of the magic number
-    if (RPi_comm.magic != COMM_MAGIC) {
+    for (int i = 0; i < NB_ESC; i++)
+      desired_speed[i] = RPi_comm.desired_speed[i];
 
-      // Flush input buffer
-      while (Serial.available())
-        Serial.read();
+    // Read data from motors
+    Read_CAN();
 
-      ret = ERROR_MAGIC;
+    // Do PID contol, then sending command to motor through CAN bus
+    Control_loop();
+
+    // Save angle, speed and torque into struct Teensy_comm
+    for (int i = 0; i < NB_ESC; i++) {
+      Teensy_comm.angle[i]  = shaft_angle_meas[i];
+      Teensy_comm.rspeed[i] = speed_meas[i];
+      Teensy_comm.torque[i] = torque_meas[i];
     }
-    else {
-      for (i = 0; i < NB_ESC; i++)
-        desired_speed[i] = RPi_comm.RPM[i];
 
-      // Read data from motors
-      readCAN();
+    // Read data from IMU(MPU 9255)
+    IMU.readSensor();
 
-      // Do PID contol, then sending command to motor through CAN bus
-      PID();
+    // Save acceleration (m/s^2) of IMU into struct Teensy_comm
+    Teensy_comm.acc[0] = IMU.getAccelX_mss();
+    Teensy_comm.acc[1] = IMU.getAccelY_mss();
+    Teensy_comm.acc[2] = IMU.getAccelZ_mss();
 
-      // Save angle, speed and torque into struct Teensy_comm
-      for (i = 0; i < NB_ESC; i++) {
-        Teensy_comm.deg[i] = angle_meas[i];
-        Teensy_comm.rpm[i] = w_meas[i];
-        Teensy_comm.torque[i] = torque_meas[i];
-      }
+    // Save gyroscope (deg/s) of IMU into struct Teensy_comm
+    Teensy_comm.gyr[0] = IMU.getGyroX_rads();
+    Teensy_comm.gyr[1] = IMU.getGyroY_rads();
+    Teensy_comm.gyr[2] = IMU.getGyroZ_rads();
 
-      // Read data from IMU(MPU 9255)
-      IMU.readSensor();
+    // Send data structure Teensy_comm to RPi
+    Serial.write(ptout, sizeof(Teensy_comm));
 
-      // Save acceleration (m/s^2) of IMU into struct Teensy_comm
-      Teensy_comm.acc[0] = IMU.getAccelX_mss();
-      Teensy_comm.acc[1] = IMU.getAccelY_mss();
-      Teensy_comm.acc[2] = IMU.getAccelZ_mss();
-
-      // Save gyroscope (deg/s) of IMU into struct Teensy_comm
-      Teensy_comm.gyr[0] = IMU.getGyroX_rads();
-      Teensy_comm.gyr[1] = IMU.getGyroY_rads();
-      Teensy_comm.gyr[2] = IMU.getGyroZ_rads();
-
-      // Send data structure Teensy_comm to RPi
-      Serial.write(ptout, sizeof(Teensy_comm));
-
-      // Force immediate transmission
-      Serial.send_now();
-    }
+    // Force immediate transmission
+    Serial.send_now();
   }
-
-  return ret;
 }
 
 //
@@ -124,14 +95,13 @@ int Teensy_comm_update(void) {
 // is already enough fast and stable, thus in this function, differential
 // part is omitted.
 //
-void PID() {
-  int i;
+void Control_loop() {
 
   // Set the CAN message ID as 0x200
   msg_send.id = 0x200;
 
   // In this function, a incremental PI controller is used
-  for (i = 0; i < NB_ESC; ++i) {
+  for (int i = 0; i < NB_ESC; ++i) {
     error[i] = desired_speed[i] - speed_meas[i];
 
     // For motors' ESCs, this command output is current value.
@@ -175,7 +145,7 @@ void PID() {
 //
 // Read message from CAN bus
 //
-void readCAN() {
+void Read_CAN() {
   int rpm, angle, torque;
   int i = 0;
 
@@ -201,25 +171,25 @@ void readCAN() {
         rpm = 0;
         rpm |= (int16_t)(unsigned char)msg_recv.buf[2] << 8;
         rpm |= (int16_t)(unsigned char)msg_recv.buf[3];
-        w_meas[msg_recv.id - 0x201] = rpm;
 
         // If speed is between 0 (0 rpm point) to 0x7fff, then the motor rotates in clockwise.
         // If speed is between 0xffff (0 rpm point) to 0x8000, then the motor rotates in counter-clockwise.
         // For doing PI control, the rpm data is transformed into the speed  of motor shaft.
-        if (rpm < speedDirectionBoundary)
-          speed_meas[msg_recv.id - 0x201] = (double)rpm / drive_ratio;
+        if (rpm < DirectionBoundary)
+          speed_meas[msg_recv.id - 0x201] = (double)rpm / DRIVE_RATIO;
         else
-          speed_meas[msg_recv.id - 0x201] = - (double)(maxBoundary - rpm) / drive_ratio;
+          speed_meas[msg_recv.id - 0x201] = - (double)(maxBoundary - rpm) / DRIVE_RATIO;
         
         angle = 0;
         angle |= (int16_t)(unsigned char)msg_recv.buf[0] << 8;
         angle |= (int16_t)(unsigned char)msg_recv.buf[1];
-        angle_meas[msg_recv.id - 0x201] = angle;
+
+        angle_calculate((double)angle / 8191.0 * 360.0, msg_recv.id - 0x201);
         
         torque = 0;
         torque |= (int16_t)(unsigned char)msg_recv.buf[4] << 8;
         torque |= (int16_t)(unsigned char)msg_recv.buf[5];
-        torque_meas[msg_recv.id - 0x201] = torque;
+        torque_meas[msg_recv.id - 0x201] = (double)torque;
         
         can_received[msg_recv.id - 0x201] = true;
         i++;
@@ -239,9 +209,17 @@ void readCAN() {
 // Read the initial data from motors
 void CAN_init() {
   int i = 0;
+  int angle;
   while (true) {
     if (CAN.read(msg_recv)) {
       if (!can_received[msg_recv.id - 0x201]) {
+        
+        angle = 0;
+        angle |= (int16_t)(unsigned char)msg_recv.buf[0] << 8;
+        angle |= (int16_t)(unsigned char)msg_recv.buf[1];
+        
+        rotor_angle_meas[msg_recv.id - 0x201] = (double)angle / 8191.0 * 360.0;
+        
         can_received[msg_recv.id - 0x201] = true;
         i++;
       }
@@ -253,6 +231,41 @@ void CAN_init() {
       break;
     }
   }
+}
+
+
+//
+// The angle data sent from motor is the rotation angle of the rotor.
+// This function is for transfering the rotor angle to shaft angle. 
+// Inputs are rotor angle, index of motor and speed of motor. 
+// Results are saved in list "angle_sum".
+// 
+void angle_calculate(double angle, int i) {
+
+  // Difference between current angle and the former one
+  double delta_angle = angle - rotor_angle_meas[i];
+    
+  // When motor rotates in clockwise, if current angle
+  // acrosses 0 degree line, which means difference is
+  // minus, the difference should be added 360 degree to
+  // compensate. Vice versa, when motor moving in counter
+  // clockwise, the difference needs to be subtracted 360.
+  if (speed_meas[i] >= 0.0 && delta_angle < 0.0) 
+    delta_angle += 360.0;
+    
+  else if (speed_meas[i] < 0.0 && delta_angle > 0.0) 
+    delta_angle -= 360.0;
+ 
+  // Angle of rotor to angle of shaft
+  shaft_angle_meas[i] += delta_angle / DRIVE_RATIO;
+
+  // Set the shaft angle between 0 - 360
+  if (shaft_angle_meas[i] >= 360.0)
+    shaft_angle_meas[i] -= 360.0;
+  else if (shaft_angle_meas[i] < 0.0)
+    shaft_angle_meas[i] += 360.0;
+
+  rotor_angle_meas[i] = angle;
 }
 
 
