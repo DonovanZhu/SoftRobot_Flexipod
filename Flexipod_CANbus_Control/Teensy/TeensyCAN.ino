@@ -14,7 +14,7 @@ FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN;
 //
 // an MPU9250 object with the MPU-9250 sensor on I2C bus 0 with address 0x68
 // The MPU-9250 I2C address will be 0x68 if the AD0 pin is grounded or 0x69
-// if the AD0 pin is pulled high.
+// if the AD0 pin is pulled high. Check: https://github.com/tonton81/FlexCAN_T4
 //
 MPU9250 IMU(Wire,0x68);   
 int status; // Use for start IMU
