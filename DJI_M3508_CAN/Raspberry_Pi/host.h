@@ -14,9 +14,9 @@
 
 #define USB_UART_SPEED     		4000000		// Baudrate of the teeensy USB serial link
 
-//#define  HOST_MODEMDEVICE		"/dev/serial/by-id/usb-Teensyduino_USB_Serial_6582050-if00"
+//#define  HOST_MODEMDEVICE		"/dev/serial/by-id/usb-Teensyduino_USB_Serial_6581650-if00"
 #define HOST_MODEMDEVICE    	"/dev/ttyACM0"	// Name of USB port
-#define HOST_DEV_SERIALNB		6582050			// Serial number of the teensy, check this number by using terminal
+#define HOST_DEV_SERIALNB		6581650			// Serial number of the teensy, check this number by using terminal
 #define HOST_DEV_SERIALLG		10				// Max length of a serial number
 #define HOST_SERIAL_DEV_DIR		"/dev/serial/by-id/"
 #define HOST_BAUDRATE       	B115200		// Serial baudrate
