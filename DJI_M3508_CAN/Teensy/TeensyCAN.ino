@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <FlexCAN_T4.h> // FlexCAN library for Teensy4.x
+#include <Adafruit_INA260.h>
 #include "MPU9250.h"    // IMU MPU9250 / MPU9255 for Teensy3.x or 4.x
 #include "TeensyCAN.h"
 
@@ -10,13 +11,13 @@
 // 256 and 16.
 //
 FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN;
-
+Adafruit_INA260 ina260 = Adafruit_INA260();
 //
 // an MPU9250 object with the MPU-9250 sensor on I2C bus 0 with address 0x68
 // The MPU-9250 I2C address will be 0x68 if the AD0 pin is grounded or 0x69
 // if the AD0 pin is pulled high. Check: https://github.com/tonton81/FlexCAN_T4
 //
-MPU9250 IMU(Wire,0x68);   
+MPU9250 IMU(Wire,0x69);   
 int status; // Use for start IMU
 
 // Globals
@@ -270,6 +271,10 @@ void angle_calculate(double angle, int i) {
 
 
 void setup() {
+  if (!ina260.begin()) {
+    Serial.println("Couldn't find INA260 chip");
+    while (1);
+  }
   // Switch on IMU, for checking the IMU setting detail:
   // https://github.com/bolderflight/MPU9250
   IMU.begin();
@@ -289,10 +294,25 @@ void setup() {
 
   // Open Serial port in speed 115200 Baudrate
   Serial.begin(USB_UART_SPEED);
+  pinMode(13, OUTPUT);
 }
 
 void loop() {
   
   Teensy_comm_update();
-
+  if (ina260.readBusVoltage() < 10000) {
+    msg_send.id = 0x200;
+    for(int i = 0; i < 8; i++) {
+      msg_send.buf[i] = 0;
+    }
+    CAN.write(msg_send);
+    
+    while(1) {
+      digitalWrite(13, HIGH);
+      delay(500);
+      digitalWrite(13, LOW);
+      delay(500);
+    }
+   
+  }
 }
