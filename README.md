@@ -43,5 +43,7 @@ CMake is not able to find BOOST libraries:
 
     sudo apt-get install cmake libblkid-dev e2fslibs-dev libboost-all-dev libaudit-dev
     
+When using g++ -I msgpack-c/include your_source_file.cpp, fatal error: msgpack.hpp: No such file or directory:
 
+    sudo apt install libmsgpack-dev
 
