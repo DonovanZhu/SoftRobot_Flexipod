@@ -29,3 +29,19 @@ execute the following commands:
     $ sudo make install
 
 `MSGPACK_CXX[11|17]` flags are not affected to installing files. Just switching test cases. All files are installed in every settings.
+
+### Known Issues when Cmake library
+Could NOT find GTest:
+
+    sudo apt-get install libgtest-dev
+    
+Could not find Doxygen (missing: DOXYGEN_EXECUTABLE):
+
+    sudo apt-get install doxygen
+    
+CMake is not able to find BOOST libraries:
+
+    sudo apt-get install cmake libblkid-dev e2fslibs-dev libboost-all-dev libaudit-dev
+    
+
+
