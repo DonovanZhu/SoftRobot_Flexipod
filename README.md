@@ -1,6 +1,11 @@
 # SoftRobot_Flexipod
 SoftRobot research in Creative Machines Lab
 ## msgpack-c-cpp library install on Raspberry pi
+### For Linux OS,a simple way to install msgpack is using the following command:
+
+    sudo apt-get install libmsgpack*
+    
+### To install through git:
 When you use msgpack on C++, you can just add msgpack-c/include to your include path:
 
     g++ -I msgpack-c/include your_source_file.cpp
@@ -29,10 +34,6 @@ execute the following commands:
     $ sudo make install
 
 `MSGPACK_CXX[11|17]` flags are not affected to installing files. Just switching test cases. All files are installed in every settings.
-
-In Linux OS, such as Ubuntu 18.04, simply type the following command:
-
-    sudo apt-get install libmsgpack*
  
 ### Known Issues when Cmake library
 Could NOT find GTest:
