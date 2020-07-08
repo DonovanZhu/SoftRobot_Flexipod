@@ -16,6 +16,7 @@
 #include <vector>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -37,8 +38,6 @@ struct termios Host_oldtio;  		// Backup of initial tty configuration
 
 Teensycomm_struct_t Teensy_comm;	// A data struct received from Teensy
 RPicomm_struct_t	RPi_comm;		// A data struct sent to Teensy
-
-char buf_UDP_recv[200]; 			// for holding UDP data
 
 double desire_speed[NB_ESC] = {0.0, 0.0, 0.0, 0.0};		// The deisred speed
 
@@ -247,127 +246,129 @@ int Host_comm_update( uint32_t            serial_nb,
 	return 0;
 }
 
+void* create_shared_memory(size_t size) {
+  // Our memory buffer will be readable and writable:
+  int protection = PROT_READ | PROT_WRITE;
+
+  // The buffer will be shared (meaning other processes can access it), but
+  // anonymous (meaning third-party processes cannot obtain an address for it),
+  // so only this process and its children will be able to use it:
+  int visibility = MAP_SHARED | MAP_ANONYMOUS;
+
+  // The remaining parameters to `mmap()` are not important for this use case,
+  // but the manpage for `mmap` explains their purpose.
+  return mmap(NULL, size, protection, visibility, -1, 0);
+}
 
 int main(int argc, char *argv[]) {
+	int init_speed[4] = {0, 0, 0, 0};
+	int* shmem = (int*)create_shared_memory(sizeof(int) * 4);
+	memcpy(shmem, init_speed, sizeof(init_speed));
+	
+	int pid = fork();
 
-/********************UDP_Receiving_Initializing********************/
-	int sock_recv, length_recv;
-	socklen_t fromlen;
-	struct sockaddr_in server_recv;
-	struct sockaddr_in hold_recv;
+	if (pid == 0) {
+	/********************UDP_Receiving_Initializing********************/
+		int sock_recv, length_recv;
+		socklen_t fromlen;
+		struct sockaddr_in server_recv;
+		struct sockaddr_in hold_recv;
 
-	sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
-	
-	length_recv = sizeof(server_recv);
-	bzero(&server_recv,length_recv);
-	
-	server_recv.sin_family = AF_INET;
-	server_recv.sin_addr.s_addr = INADDR_ANY;
-	server_recv.sin_port = htons(1000);	// Setting port of this program
-	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
-	fromlen = sizeof(struct sockaddr_in);
-	
-	vector<MotorSpeed> recv;		// For holding the received class
-/******************************************************************/
-/*********************UDP_Sending_Initializing*********************/
- 	int sock_send, length_send;
-	struct sockaddr_in client_send;
-
-	sock_send = socket(AF_INET, SOCK_DGRAM, 0);
-	
-	length_send = sizeof(client_send);
-	bzero(&client_send,length_send);
-	
-	client_send.sin_family = AF_INET;
-	client_send.sin_port = htons(2000); // Port of aim program
-	inet_pton(AF_INET, "192.168.0.67", &client_send.sin_addr); // Address
-	bind(sock_send,(struct sockaddr *)&client_send,length_send);
-	
-	vector<MotorData> send;			// For holding the sent class
-/******************************************************************/
-
-	int ret;
-	double RPM[NB_ESC] = {0.0, 0.0, 0.0, 0.0};
-	Teensycomm_struct_t *comm;
-  
-	// Initialize serial port
-	if (Host_init_port(HOST_DEV_SERIALNB)) {
-		fprintf(stderr, "Error initializing serial port.\n");
-		exit(-1);
-	}
-
-	while (1) {
+		sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
 		
+		length_recv = sizeof(server_recv);
+		bzero(&server_recv,length_recv);
 		
-		int datalength = recvfrom(sock_recv, buf_UDP_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
-		// If using joystick, which sends a list of speed:
-		#ifdef UDP_LIST
-		int j = 0;
-		int pos = 0;
-		char num[10];
-		for (int i = 0; i < datalength; ++i) {
-			if (buf_UDP_recv[i] == ',') {
-				memset(num, 0, sizeof(num));
-				strncpy(num, buf_UDP_recv + pos, i - pos);
-				desire_speed[j] = atoi(num);
-				pos = i + 1;
-				j++;
+		server_recv.sin_family = AF_INET;
+		server_recv.sin_addr.s_addr = INADDR_ANY;
+		server_recv.sin_port = htons(10);	// Setting port of this program
+		bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
+		fromlen = sizeof(struct sockaddr_in);
+		vector<MotorSpeed> recv;		// For holding the received class
+	/******************************************************************/
+		char buf_UDP_recv[200]; 			// for holding UDP data
+		int speed_int[4] = {0, 0, 0, 0};
+		while (1) {
+			int datalength = recvfrom(sock_recv, buf_UDP_recv, 200, 0, (struct sockaddr *)&hold_recv, &fromlen);
+			msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
+			msgpack::object obj = oh.get();
+			recv.clear();
+			obj.convert(recv);
+			for (int i = 0; i < 4; ++i) {
+				speed_int[i] = int((recv[0].rpm[i] / 500.0) * 10000.0);
 			}
+			memcpy(shmem, speed_int, sizeof(speed_int));
 		}
-		#endif
-		
-		#ifdef UDP_MSGPACK
-		// If using PC to send a msgpack, unpack data into class MotorSpeed type:
-		msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
-		
-		msgpack::object obj = oh.get();
-		recv.clear();
-		obj.convert(recv);	// Save data into the vector<MotorSpeed> recv
-		#endif
-		
-		// Get the desired speed
-		for (int i = 0; i < NB_ESC; ++i)
-			desire_speed[i] = recv[0].rpm[i];
+	} 
+	
+	else {
+	/*********************UDP_Sending_Initializing*********************/
+		int sock_send, length_send;
+		struct sockaddr_in client_send;
 
-		// Serial exchange with teensy
-		if ((ret = Host_comm_update(HOST_DEV_SERIALNB, RPM, &comm))) {
-			fprintf(stderr, "Error %d in Host_comm_update.\n", ret);
-			break;
+		sock_send = socket(AF_INET, SOCK_DGRAM, 0);
+		
+		length_send = sizeof(client_send);
+		bzero(&client_send,length_send);
+		
+		client_send.sin_family = AF_INET;
+		client_send.sin_port = htons(2000); // Port of aim program
+		inet_pton(AF_INET, "192.168.8.109", &client_send.sin_addr); // Address
+		bind(sock_send,(struct sockaddr *)&client_send,length_send);
+		vector<MotorData> send;			// For holding the sent class
+	/******************************************************************/
+		Teensycomm_struct_t *comm;
+		double RPM[NB_ESC] = {0.0, 0.0, 0.0, 0.0};
+		int ret;
+		// Initialize serial port
+		if (Host_init_port(HOST_DEV_SERIALNB)) {
+			fprintf(stderr, "Error initializing serial port.\n");
+			exit(-1);
 		}
 
-		// After receiving the data from Teensy, save it into class SendMotorData
-		for (int k = 0; k < NB_ESC; ++k) {
+		int x = 0;
+		while(1) {
+			for (int i = 0; i < 4; ++i) {
+				desire_speed[i] = (double) *(shmem + i) / 10000.0 * 500.0;
+			}
+			// Serial exchange with teensy
+			if ((ret = Host_comm_update(HOST_DEV_SERIALNB, RPM, &comm))) {
+				fprintf(stderr, "Error %d in Host_comm_update.\n", ret);
+				break;	
+			}
 			
-			// Speed of motors:
-			SendMotorData.rpm[k] = comm->rspeed[k];
+			// After receiving the data from Teensy, save it into class SendMotorData
+			for (int j = 0; j < NB_ESC; ++j) {
+				
+				// Speed of motors:
+				SendMotorData.rpm[j] = comm->rspeed[j];
+				
+				// Angle of motors:
+				SendMotorData.angle[j] = comm->angle[j];
+				
+				// Torque of motors:
+				SendMotorData.torque[j] = comm->torque[j];
+				// Desired speed:
+				SendMotorData.command[j] = desire_speed[j];
+			}
 			
-			// Angle of motors:
-			SendMotorData.angle[k] = comm->angle[k];
-			
-			// Torque of motors:
-			SendMotorData.torque[k] = comm->torque[k];
-			// Desired speed:
-			SendMotorData.command[k] = desire_speed[k];
+			// Data from IMU:
+			for (int k = 0; k < 3; ++k) {
+				SendMotorData.acc[k] = (double)comm->acc[k];
+				SendMotorData.gyr[k] = (double)comm->gyr[k];
+			}
+			printf("%f\n", SendMotorData.rpm[0]);
+			// Pack class into msgpack and send it to PC
+			send.clear();
+			send.push_back(SendMotorData);
+			msgpack::sbuffer sbuf;
+			msgpack::pack(sbuf, send);
+			sendto(sock_send, sbuf.data(), sbuf.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
+			x+=2;
+
 		}
-		// printf("%f\n", SendMotorData.rpm[0]);
-		// Data from IMU:
-		for (int k = 0; k < 3; ++k) {
-			SendMotorData.acc[k] = (double)comm->acc[k];
-			SendMotorData.gyr[k] = (double)comm->gyr[k];
-		}
-		
-		// Pack class into msgpack and send it to PC
-		send.clear();
-		send.push_back(SendMotorData);
-		msgpack::sbuffer sbuf;
-		msgpack::pack(sbuf, send);
-		sendto(sock_send, sbuf.data(), sbuf.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
-		          
+		Host_release_port(HOST_DEV_SERIALNB);
 	}
-
-	// Restoring serial port initial configuration
-	Host_release_port(HOST_DEV_SERIALNB);
-
 	return 0;
 }
 
