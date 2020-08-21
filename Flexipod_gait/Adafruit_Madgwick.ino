@@ -24,9 +24,8 @@ sensors_event_t temp;
 #define ACCEL_Y_OFFSET -0.2332105
 #define ACCEL_Z_OFFSET 10.0582304
 
-const float magn_ellipsoid_center[3] = {-0.0146772, 5.85864, 15.447};
-const float magn_ellipsoid_transform[3][3] = {{0.918472, 0.0474938, -0.0151424}, {0.0474938, 0.969668, -0.00885663}, {-0.0151424, -0.00885663, 0.879898}};
-
+const float magn_ellipsoid_center[3] = {-5.70122, 4.13476, 7.21999};
+const float magn_ellipsoid_transform[3][3] = {{0.926369, 0.048224, -0.014515}, {0.048224, 0.966647, -0.00450185}, {-0.014515, -0.00450185, 0.886212}};
 // Sensor variables
 float acc[3];  // Actually stores the NEGATED acceleration (equals gravity, if board not moving).
 float mag[3];
