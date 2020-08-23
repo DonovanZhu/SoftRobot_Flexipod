@@ -1,5 +1,7 @@
 #include <Adafruit_LSM6DSOX.h>
 #include <Adafruit_LIS3MDL.h>
+#include <Wire.h>
+#include "MadgwickAHRS.h"
 
 Adafruit_LSM6DS sox;
 Adafruit_LIS3MDL lis;
@@ -9,10 +11,90 @@ sensors_event_t gyro;
 sensors_event_t mage;
 sensors_event_t temp;
 
-int sample_times = 1;
+//-0.0159352 -0.2338077 10.0549326 0.0127355 0.0005773 -0.0068255
+//  -0.0162423 -0.2332105 10.0582304 0.0127815 0.0005184 -0.0067737
+// 0.0119404 -0.0784966 10.0531912 0.0133415 0.0014781 -0.0067517
+// 0.0003594 -0.1073400 10.0594749 0.0133687 0.0014868 -0.0067575
+// 0.0426984 -0.3458546 10.0628948 0.0131094 0.0012340 -0.0056364
 
-float acc_cal[3] = {0.0, 0.0, 0.0};
-float gyro_cal[3] = {0.0, 0.0, 0.0};
+#define GRAVITY 9.802 // The gravity acceleration in New York City
+
+// Calibration outcomes
+#define GYRO_X_OFFSET 0.0131094
+#define GYRO_Y_OFFSET 0.0012340
+#define GYRO_Z_OFFSET -0.0056364
+
+#define ACCEL_X_OFFSET 0.0426984
+#define ACCEL_Y_OFFSET -0.3458546
+#define ACCEL_Z_OFFSET 10.0628948
+
+const float magn_ellipsoid_center[3] = {-3.20245, -4.52383, -0.427326};
+const float magn_ellipsoid_transform[3][3] = {{0.931531, 0.0488181, -0.0127095}, {0.0488181, 0.964029, -0.00216508}, {-0.0127095, -0.00216508, 0.889371}};
+// Sensor variables
+float acc[3];  // Actually stores the NEGATED acceleration (equals gravity, if board not moving).
+float mag[3];
+float mag_tmp[3];
+float gyr[3];
+
+float time_now;
+float time_former;
+float deltat;
+
+// Set structs for converting result from Quaternion to Euler angles
+struct Quaternion {
+    float w, x, y, z;
+};
+
+struct EulerAngles {
+    float roll_e, pitch_e, yaw_e;
+};
+
+Quaternion qua;
+EulerAngles eul;
+
+void read_sensors() {
+  sox.getEvent(&accel, &gyro, &temp);
+  lis.getEvent(&mage);
+  acc[0] = accel.acceleration.x;
+  acc[1] = accel.acceleration.y;
+  acc[2] = accel.acceleration.z;
+
+  mag[0] = mage.magnetic.x;
+  mag[1] = mage.magnetic.y;
+  mag[2] = mage.magnetic.z;
+
+  gyr[0] = gyro.gyro.x;
+  gyr[1] = gyro.gyro.y;
+  gyr[2] = gyro.gyro.z;
+}
+
+void compensate_sensor_errors() {
+    // Compensate accelerometer error
+    acc[0] -= ACCEL_X_OFFSET;
+    acc[1] -= ACCEL_Y_OFFSET;
+    acc[2] -= ACCEL_Z_OFFSET - GRAVITY;
+
+    // Compensate magnetometer error
+    for (int i = 0; i < 3; i++)
+      mag_tmp[i] = mag[i] - magn_ellipsoid_center[i];
+    Matrix_Vector_Multiply(magn_ellipsoid_transform, mag_tmp, mag);
+
+    // Compensate gyroscope error
+    gyr[0] -= GYRO_X_OFFSET;
+    gyr[1] -= GYRO_Y_OFFSET;
+    gyr[2] -= GYRO_Z_OFFSET;
+}
+
+/* This file is part of the Razor AHRS Firmware */
+// Multiply 3x3 matrix with vector: out = a * b
+// out has to different from b (no in-place)!
+void Matrix_Vector_Multiply(const float a[3][3], const float b[3], float out[3])
+{
+  for(int x = 0; x < 3; x++)
+  {
+    out[x] = a[x][0] * b[0] + a[x][1] * b[1] + a[x][2] * b[2];
+  }
+}
 
 void sendToPC(float* data1, float* data2, float* data3)
 {
@@ -25,10 +107,34 @@ void sendToPC(float* data1, float* data2, float* data3)
   Serial.write(buf, 12);
 }
 
+EulerAngles ToEulerAngles(Quaternion q) {
+    EulerAngles angles;
+
+    // roll (x-axis rotation)
+    double sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+    double cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+    angles.roll_e = atan2(sinr_cosp, cosr_cosp);
+
+    // pitch (y-axis rotation)
+    double sinp = 2 * (q.w * q.y - q.z * q.x);
+    if (fabs(sinp) >= 1)
+        angles.pitch_e = copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+    else
+        angles.pitch_e = asin(sinp);
+
+    // yaw (z-axis rotation)
+    double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+    double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+    angles.yaw_e = atan2(siny_cosp, cosy_cosp);
+
+    return angles;
+}
+
 void setup() {
   Serial.begin(1000000);
   while (!Serial) yield();
-
+  //Wire.begin();
+  Wire.setClock(4000000);
   sox.begin_I2C();
 
   sox.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
@@ -45,7 +151,7 @@ void setup() {
 
   lis.setOperationMode(LIS3MDL_CONTINUOUSMODE);
 
-  lis.setDataRate(LIS3MDL_DATARATE_155_HZ);
+  lis.setDataRate(LIS3MDL_DATARATE_20_HZ);
 
   lis.setRange(LIS3MDL_RANGE_4_GAUSS);
 
@@ -54,37 +160,38 @@ void setup() {
                       true, // polarity
                       false, // don't latch
                       true); // enabled!
-
+  time_former = micros();
 }
 
-//-0.0159352 -0.2338077 10.0549326 0.0127355 0.0005773 -0.0068255
-//  -0.0162423 -0.2332105 10.0582304 0.0127815 0.0005184 -0.0067737
-
 void loop() {
-  //sox.getEvent(&accel, &gyro, &temp);
-  lis.getEvent(&mage);
-  /*
-  acc_cal[0] += accel.acceleration.x;
-  acc_cal[1] += accel.acceleration.y;
-  acc_cal[2] += accel.acceleration.z;
+  read_sensors();
 
-  gyro_cal[0] += gyro.gyro.x;
-  gyro_cal[1] += gyro.gyro.y;
-  gyro_cal[2] += gyro.gyro.z;
-  */
+  compensate_sensor_errors();
+
+  time_now = micros();
+  deltat = (float)(time_now - time_former) / 1000000.0f;
+  time_former = time_now;
+  MadgwickQuaternionUpdate(acc[0], acc[1], acc[2],
+                           gyr[0], gyr[1], gyr[2],
+                           mag[0], mag[1], mag[2], deltat);
+  qua.w = q[0];
+  qua.x = q[1];
+  qua.y = q[2];
+  qua.z = q[3];
+  eul = ToEulerAngles(qua);
+  eul.yaw_e += 0.8;
+  if (eul.yaw_e > PI) {
+    eul.yaw_e -= 2 * PI;
+  }
   /*
-  Serial.print(acc_cal[0] / sample_times, 7);
+  Serial.print(eul.roll_e * 180.0 / PI);
   Serial.print(" ");
-  Serial.print(acc_cal[1] / sample_times, 7);
+  Serial.print(eul.pitch_e * 180.0 / PI);
   Serial.print(" ");
-  Serial.print(acc_cal[2] / sample_times, 7);
-  Serial.print(" ");
-  Serial.print(gyro_cal[0] / sample_times, 7);
-  Serial.print(" ");
-  Serial.print(gyro_cal[1] / sample_times, 7);
-  Serial.print(" ");
-  Serial.println(gyro_cal[2] / sample_times, 7);
+  Serial.print(eul.yaw_e * 180.0 / PI);
+  Serial.println(" ");
   */
-  sendToPC(&mage.magnetic.x, &mage.magnetic.y, &mage.magnetic.z);
-  
+  //Serial.println(deltat,7);
+  sendToPC(&eul.roll_e, &eul.pitch_e, &eul.yaw_e);
+  delayMicroseconds(600);
 }
