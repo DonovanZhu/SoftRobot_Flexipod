@@ -36,6 +36,9 @@ typedef struct {
   double    motor_command[NB_ESC];    // Motors speed command
   double    acc[3];						  // Acceleration in X Y Z direction, m/s^2
   double    gyr[3];						  // Gyroscope in X Y Z direction, deg/s
+  double    mag[3];             // Magnetometer in X Y Z, uT
+  double    eular[3];
+  double    timestamps;
 } Teensycomm_struct_t;
 
 // Host->teensy communication data structure
