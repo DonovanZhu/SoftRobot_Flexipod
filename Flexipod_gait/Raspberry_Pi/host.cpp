@@ -316,7 +316,7 @@ int main( ) {
 		
 		client_send.sin_family = AF_INET;
 		client_send.sin_port = htons(123); // Port of aim program
-		inet_pton(AF_INET, "192.168.8.197", &client_send.sin_addr); // Address
+		inet_pton(AF_INET, "192.168.8.109", &client_send.sin_addr); // Address
 		bind(sock_send,(struct sockaddr *)&client_send,length_send);
 		vector<MotorData> send;			// For holding the sent class
 	/******************************************************************/
