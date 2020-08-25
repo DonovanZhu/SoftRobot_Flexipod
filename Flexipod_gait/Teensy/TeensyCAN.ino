@@ -1,8 +1,10 @@
-#include <FlexCAN_T4.h> // FlexCAN library for Teensy4.x
-#include <Adafruit_INA260.h>
-#include "TeensyCAN.h"
 #include <Adafruit_LSM6DSOX.h>
 #include <Adafruit_LIS3MDL.h>
+#include <Adafruit_INA260.h>
+#include <FlexCAN_T4.h>
+#include "MadgwickAHRS.h"
+#include "TeensyCAN.h"
+
 
 //
 // Choose CAN2 as the CAN port. In Teensy4.0, CAN2 pins are
@@ -20,19 +22,12 @@ sensors_event_t accel;
 sensors_event_t gyro;
 sensors_event_t mage;
 
-//
-// an MPU9250 object with the MPU-9250 sensor on I2C bus 0 with address 0x68
-// The MPU-9250 I2C address will be 0x68 if the AD0 pin is grounded or 0x69
-// if the AD0 pin is pulled high. Check: https://github.com/tonton81/FlexCAN_T4
-//
 
-//MPU9250 IMU(Wire, 0x68);
+const double magn_ellipsoid_center[3] = {0.262689, -6.89484, 4.0776};
+const double magn_ellipsoid_transform[3][3] = {{0.899993, 0.0341615, -0.000181209}, {0.0341615, 0.988324, -0.000514259}, {-0.000181209, -0.000514259, 0.952566}};
 
-double deltat = 0.0;
-double t1     = 0.0;
-double t2     = 0.0;
 // Globals
-bool    can_received[NB_ESC]       = {  0,   0,   0,   0};     // For checking the data receiving status of each motor
+bool    can_received[NB_ESC]       = {  0,   0,   0,   0};   // For checking the data receiving status of each motor
 double  shaft_angle_meas[NB_ESC]   = {0.0, 0.0, 0.0, 0.0};   // Angle measured of each motor's shaft, unit degree, 0 - 360
 double  rotor_angle_meas[NB_ESC]   = {0.0, 0.0, 0.0, 0.0};   // Angle measured of each motor's rotor, unit 1, 0 - 0x1fff, corresponding to 0 - 360
 double  rotor_init_angle[NB_ESC]   = {0.0, 0.0, 0.0, 0.0};
@@ -48,27 +43,59 @@ double  ang_command[NB_ESC]        = {0.0, 0.0, 0.0, 0.0};
 double  desire_angle[NB_ESC]       = {0.0, 0.0, 0.0, 0.0};
 int     moving_direction           = 0;
 double  freq                       = 0.0;
-double  time_former;
-double  time_now;
-double  dt = 0.0;
-Teensycomm_struct_t Teensy_comm    = {{}, {}, {}, {}, {}, {}};   // For holding data sent to RPi
+double acc[3];  // Actually stores the NEGATED acceleration (equals gravity, if board not moving).
+double mag[3];
+double mag_tmp[3];
+double gyr[3];
+
+double time_now;
+double time_former;
+double dt = 0.0;
+double deltat;
+Teensycomm_struct_t Teensy_comm    = {{}, {}, {}, {}, {}, {}, {}, {}, {}};   // For holding data sent to RPi
 RPicomm_struct_t    RPi_comm       = {{}};                   // For holding data received from RPi
 
 // Set CAN bus message structure as CAN2.0
 CAN_message_t msg_recv; // For receiving data on CAN bus
 CAN_message_t msg_send; // For sending data on CAN bus
 
+struct Quaternion {
+    double w, x, y, z;
+};
+
+struct EulerAngles {
+    double roll_e, pitch_e, yaw_e;
+};
+
+Quaternion qua;
+EulerAngles eul;
 
 // Manage communication with RPi
 void Teensy_comm_update(void) {
   static uint8_t  *ptin  = (uint8_t*)(&RPi_comm);
   static uint8_t  *ptout = (uint8_t*)(&Teensy_comm);
   static int      in_cnt = 0;
-  sox.getEvent(&accel, &gyro);
-  lis.getEvent(&mage);
-  t1 = micros();
-  deltat = t1 - t2;
-  t2 = t1;
+
+  read_sensors();
+
+  compensate_sensor_errors();
+  time_now = (double)micros();
+  deltat = (time_now - time_former) / 1000000.0;
+  time_former = time_now;
+
+  MadgwickQuaternionUpdate(acc[0], acc[1], acc[2],
+                         gyr[0], gyr[1], gyr[2],
+                         mag[0], mag[1], mag[2], deltat);
+  qua.w = q[0];
+  qua.x = q[1];
+  qua.y = q[2];
+  qua.z = q[3];
+  eul = ToEulerAngles(qua);
+  eul.yaw_e += 0.8;
+  if (eul.yaw_e > PI) {
+    eul.yaw_e -= 2 * PI;
+  }
+  
   // Read all incoming bytes available until incoming structure is complete
   while ((Serial.available() > 0) && (in_cnt < (int)sizeof(RPi_comm)))
     ptin[in_cnt++] = Serial.read();
@@ -78,8 +105,6 @@ void Teensy_comm_update(void) {
 
     // Clear incoming bytes counter
     in_cnt = 0;
-
-
 
     // Save angle, speed and torque into struct Teensy_comm
     for (int i = 0; i < NB_ESC; i++) {
@@ -92,7 +117,7 @@ void Teensy_comm_update(void) {
     // Read data from IMU(MPU9250)
 
     // Save acceleration (m/s^2) of IMU into struct Teensy_comm
-    Teensy_comm.acc[0] = deltat;
+    Teensy_comm.acc[0] = accel.acceleration.x;
     Teensy_comm.acc[1] = accel.acceleration.y;
     Teensy_comm.acc[2] = accel.acceleration.z;
 
@@ -101,13 +126,23 @@ void Teensy_comm_update(void) {
     Teensy_comm.gyr[1] = gyro.gyro.y;
     Teensy_comm.gyr[2] = gyro.gyro.z;
 
+    Teensy_comm.mag[0] = mage.magnetic.x;
+    Teensy_comm.mag[1] = mage.magnetic.y;
+    Teensy_comm.mag[2] = mage.magnetic.z;
+
+    Teensy_comm.eular[0] = eul.roll_e;
+    Teensy_comm.eular[1] = eul.pitch_e;
+    Teensy_comm.eular[2] = eul.yaw_e;
+
+    Teensy_comm.timestamps = time_now / 1000000.0;
     // Send data structure Teensy_comm to RPi
     Serial.write(ptout, sizeof(Teensy_comm));
 
     // Force immediate transmission
     Serial.send_now();
   }
-  time_now = micros() / 1000000.0;
+
+
   if (RPi_comm.speedcommand != 0.0) {
     double T = fabs(1.0 / RPi_comm.speedcommand);
 
@@ -130,7 +165,7 @@ void Teensy_comm_update(void) {
       }
     }
 
-    dt += time_now - time_former;
+    dt += deltat;
 
     freq = RPi_comm.speedcommand;
 
@@ -205,8 +240,6 @@ void Teensy_comm_update(void) {
     }
   }
 
-  time_former = time_now;
-
   for (int i = 0; i < NB_ESC; ++i) {
     while (desire_angle[i] > 360.0) {
       desire_angle[i] -= 360.0;
@@ -222,6 +255,70 @@ void Teensy_comm_update(void) {
   Angle_Sync_Loop();
   // Do PI speed contol, then sending command to motor through CAN bus
   Speed_Control_Loop();
+}
+
+void read_sensors() {
+  sox.getEvent(&accel, &gyro);
+  lis.getEvent(&mage);
+  acc[0] = accel.acceleration.x;
+  acc[1] = accel.acceleration.y;
+  acc[2] = accel.acceleration.z;
+
+  mag[0] = mage.magnetic.x;
+  mag[1] = mage.magnetic.y;
+  mag[2] = mage.magnetic.z;
+
+  gyr[0] = gyro.gyro.x;
+  gyr[1] = gyro.gyro.y;
+  gyr[2] = gyro.gyro.z;
+}
+
+void compensate_sensor_errors() {
+    // Compensate accelerometer error
+    acc[0] -= ACCEL_X_OFFSET;
+    acc[1] -= ACCEL_Y_OFFSET;
+    acc[2] -= ACCEL_Z_OFFSET - GRAVITY;
+
+    // Compensate magnetometer error
+    for (int i = 0; i < 3; i++)
+      mag_tmp[i] = mag[i] - magn_ellipsoid_center[i];
+    Matrix_Vector_Multiply(magn_ellipsoid_transform, mag_tmp, mag);
+
+    // Compensate gyroscope error
+    gyr[0] -= GYRO_X_OFFSET;
+    gyr[1] -= GYRO_Y_OFFSET;
+    gyr[2] -= GYRO_Z_OFFSET;
+}
+
+void Matrix_Vector_Multiply(const double a[3][3], const double b[3], double out[3])
+{
+  for(int x = 0; x < 3; x++)
+  {
+    out[x] = a[x][0] * b[0] + a[x][1] * b[1] + a[x][2] * b[2];
+  }
+}
+
+EulerAngles ToEulerAngles(Quaternion q) {
+    EulerAngles angles;
+
+    // roll (x-axis rotation)
+    double sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+    double cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+    angles.roll_e = atan2(sinr_cosp, cosr_cosp);
+
+    // pitch (y-axis rotation)
+    double sinp = 2 * (q.w * q.y - q.z * q.x);
+    if (fabs(sinp) >= 1)
+        angles.pitch_e = copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+    else
+        angles.pitch_e = asin(sinp);
+
+    // yaw (z-axis rotation)
+    double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+    double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+    angles.yaw_e = atan2(siny_cosp, cosy_cosp);
+
+    return angles;
 }
 
 void Angle_Sync_Loop() {
@@ -270,7 +367,7 @@ void Speed_Control_Loop() {
     // If the output is negative, then the output shall be larger than PID_L limit.
     constrain(speed_command[i], PID_L, PID_H);
     int v = int(speed_command[i]);
-
+    //v = 0;
     // msg_send.buf is a list of 8 bytes.
     // buf[0] and buf[1] are the high byte and low byte of command sent to motor1
     // buf[2] and buf[3] are the high byte and low byte of command sent to motor2
@@ -423,7 +520,7 @@ void angle_calculate(double angle, int i) {
 
 
 void setup() {
-  time_former = micros() / 1000000.0;
+  time_former = micros();
   
   sox.begin_I2C();
 
