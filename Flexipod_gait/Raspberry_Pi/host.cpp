@@ -48,9 +48,11 @@ public:
 	MSGPACK_DEFINE(robot_command);
 };
 
+
 //
 // Class for sending command to PC if using msgpack
 //
+
 class MotorData {
 public:
 	double angle[NB_ESC]; 		// Rotation angle, unit degree
@@ -59,8 +61,12 @@ public:
 	double command[NB_ESC];  	// Desired speed, unit rpm
 	double acc[3];				// Acceleration of IMU, unit m/s^2
 	double gyr[3];				// Gyroscope, unit deg/s
-	MSGPACK_DEFINE(angle, rpm, torque, command, acc, gyr);
+	double mag[3];
+	double eular[3];
+	double timestamps;
+	MSGPACK_DEFINE(angle, rpm, torque, command, acc, gyr, mag, eular, timestamps);
 };
+
 // set a object for sending UDP through msgpack
 MotorData SendMotorData;
 
@@ -292,6 +298,7 @@ int main( ) {
 			msgpack::object obj = oh.get();
 			recv.clear();
 			obj.convert(recv);
+			
 			command_recv[0] = (int)(recv[0].robot_command * 100000.0);
 			memcpy(shmem, command_recv, sizeof(command_recv));
 		}
@@ -308,8 +315,8 @@ int main( ) {
 		bzero(&client_send,length_send);
 		
 		client_send.sin_family = AF_INET;
-		client_send.sin_port = htons(2000); // Port of aim program
-		inet_pton(AF_INET, "192.168.8.109", &client_send.sin_addr); // Address
+		client_send.sin_port = htons(123); // Port of aim program
+		inet_pton(AF_INET, "192.168.8.197", &client_send.sin_addr); // Address
 		bind(sock_send,(struct sockaddr *)&client_send,length_send);
 		vector<MotorData> send;			// For holding the sent class
 	/******************************************************************/
@@ -328,13 +335,14 @@ int main( ) {
 		while(1) {
 			
 			desire_speed = (double) *shmem / 100000.0 ;
-
+			
 			// Serial exchange with teensy
 			if ((ret = Host_comm_update(HOST_DEV_SERIALNB, RPM, &comm))) {
 				fprintf(stderr, "Error %d in Host_comm_update.\n", ret);
 				break;	
 			}
 			// After receiving the data from Teensy, save it into class SendMotorData
+			
 			for (int j = 0; j < NB_ESC; ++j) {
 				
 				// Speed of motors:
@@ -353,17 +361,19 @@ int main( ) {
 			for (int k = 0; k < 3; ++k) {
 				SendMotorData.acc[k] = (double)comm->acc[k];
 				SendMotorData.gyr[k] = (double)comm->gyr[k];
+				SendMotorData.mag[k] = (double)comm->mag[k];
+				SendMotorData.eular[k] = (double)comm->eular[k];
 			}
+			SendMotorData.timestamps = (double)comm->timestamps;
 			//if (SendMotorData.acc[0] > 1050)
-				printf("%f\t%f\n", SendMotorData.acc[0], SendMotorData.acc[1]);
-			// printf("%f\t%f\t%f\t%f\n", SendMotorData.angle[0], SendMotorData.angle[1], SendMotorData.angle[2], SendMotorData.angle[3]);
+				//printf("%f\t%f\n", desire_speed, SendMotorData.acc[1]);
+			//printf("%f\n", SendMotorData.timestamps);
 			// Pack class into msgpack and send it to PC
 			send.clear();
 			send.push_back(SendMotorData);
 			msgpack::sbuffer sbuf;
 			msgpack::pack(sbuf, send);
 			sendto(sock_send, sbuf.data(), sbuf.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
-
 		}
 		Host_release_port(HOST_DEV_SERIALNB);
 	}
