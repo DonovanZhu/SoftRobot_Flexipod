@@ -521,13 +521,13 @@ void bound_gait() {
 }
 
 void flip_gait() {
-  double front_leg_step = 0.2;
-  double back_leg_step = 0.8;
+  double front_leg_step = 0.3;
+  double back_leg_step = 0.9;
 
   if (fabs(120.0 - desire_angle[0]) < 1.0)
     desire_angle[0] = 120.0;
   else
-    desire_angle[0] -= front_leg_step;
+    desire_angle[0] += front_leg_step;
 
   if (fabs(240.0 - desire_angle[3]) < 1.0)
     desire_angle[3] = 240.0;
@@ -537,7 +537,8 @@ void flip_gait() {
   if (fabs(300.0 - desire_angle[1]) < 1.0)
     desire_angle[1] = 300.0;
   else
-    desire_angle[1] -= back_leg_step;
+    desire_angle[1] += back_leg_step;
+    
   if (fabs(60.0 - desire_angle[2]) < 1.0)
     desire_angle[2] = 60.0;
   else
@@ -546,7 +547,7 @@ void flip_gait() {
 }
 
 void turn_left() {
-  double turn_step = 0.5;
+  double turn_step = 0.18;
   for (int i = 0; i < NB_ESC; ++i) {
     desire_angle[i] = command_angle[i];
     desire_angle[i] -= turn_step;
@@ -554,7 +555,7 @@ void turn_left() {
 }
 
 void turn_right() {
-  double turn_step = 0.5;
+  double turn_step = 0.18;
   for (int i = 0; i < NB_ESC; ++i) {
     desire_angle[i] = command_angle[i];
     desire_angle[i] += turn_step;
@@ -729,7 +730,7 @@ void loop() {
     else if (RPi_comm.gait == 8)
       legs_sync();
 
-    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
+    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 4 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
       for (int i = 0; i < NB_ESC; ++i) {
         command_angle[i] = 360.0 - desire_angle[i];
       }
