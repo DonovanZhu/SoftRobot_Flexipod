@@ -523,37 +523,40 @@ void flip_gait() {
   
 }
 
-void leg_reset() {
+void legs_reset() {
+  double reset_step = 0.18;
+  for (int i = 0; i < NB_ESC; ++i) {
+    desire_angle[i] = command_angle[i];
+    if (desire_angle[i] < 1.0 || (360.0 - desire_angle[i]) < 1.0) {
+      desire_angle[i] = 0.0;
+    }
+    else {
+      if (desire_angle[i] < 180.0) {
+        desire_angle[i] -= reset_step;
+      }
+      else {
+        desire_angle[i] += reset_step;
+      }
+    }
+  }
   
 }
 void setup() {
   time_former = micros();
 
   sox.begin_I2C();
-
   sox.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
-
   sox.setGyroRange(LSM6DS_GYRO_RANGE_250_DPS );
-
   sox.setAccelDataRate(LSM6DS_RATE_104_HZ);
-
   sox.setGyroDataRate(LSM6DS_RATE_104_HZ);
 
   lis.begin_I2C();          // hardware I2C mode, can pass in address & alt Wire
-
   lis.setPerformanceMode(LIS3MDL_MEDIUMMODE);
-
   lis.setOperationMode(LIS3MDL_CONTINUOUSMODE);
-
   lis.setDataRate(LIS3MDL_DATARATE_155_HZ);
-
   lis.setRange(LIS3MDL_RANGE_4_GAUSS);
-
   lis.setIntThreshold(500);
-  lis.configInterrupt(false, false, true, // enable z axis
-                      true, // polarity
-                      false, // don't latch
-                      true); // enabled!
+  lis.configInterrupt(false, false, true, true, false, true); // enabled!
 
   ina260.begin();
 
@@ -638,7 +641,6 @@ void loop() {
     Serial.send_now();
   }
 
-
   if (RPi_comm.speedcommand != 0.0) {
     if (RPi_comm.gait == 1)
       trot_gait();
@@ -649,7 +651,7 @@ void loop() {
     else if (RPi_comm.gait == 4)
       flip_gait();
     else if (RPi_comm.gait == 5)
-      leg_reset();
+      legs_reset();
       
     if (fabs(eul.roll_e) > PI / 2.0) {
       for (int i = 0; i < NB_ESC; ++i) {
@@ -662,8 +664,6 @@ void loop() {
       }
     }
   }
-
-
 
   for (int i = 0; i < NB_ESC; ++i) {
     while (desire_angle[i] > 360.0) {
