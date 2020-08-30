@@ -524,16 +524,16 @@ void flip_gait() {
   double front_leg_step = 0.2;
   double back_leg_step = 0.8;
 
-  if (fabs(120.0 - desire_angle[0]) < 1.0) 
+  if (fabs(120.0 - desire_angle[0]) < 1.0)
     desire_angle[0] = 120.0;
   else
     desire_angle[0] -= front_leg_step;
-  
+
   if (fabs(240.0 - desire_angle[3]) < 1.0)
     desire_angle[3] = 240.0;
   else
     desire_angle[3] -= front_leg_step;
-  
+
   if (fabs(300.0 - desire_angle[1]) < 1.0)
     desire_angle[1] = 300.0;
   else
@@ -546,11 +546,19 @@ void flip_gait() {
 }
 
 void turn_left() {
-  
+  double turn_step = 0.5;
+  for (int i = 0; i < NB_ESC; ++i) {
+    desire_angle[i] = command_angle[i];
+    desire_angle[i] -= turn_step;
+  }
 }
 
 void turn_right() {
-  
+  double turn_step = 0.5;
+  for (int i = 0; i < NB_ESC; ++i) {
+    desire_angle[i] = command_angle[i];
+    desire_angle[i] += turn_step;
+  }
 }
 
 void legs_reset() {
@@ -569,8 +577,40 @@ void legs_reset() {
       }
     }
   }
-  
 }
+
+void legs_sync() {
+  double reset_step = 0.18;
+  for (int i = 0; i < 2; ++i) {
+    desire_angle[i] = command_angle[i];
+    if (desire_angle[i] < 1.0 || (360.0 - desire_angle[i]) < 1.0) {
+      desire_angle[i] = 0.0;
+    }
+    else {
+      if (desire_angle[i] < 180.0) {
+        desire_angle[i] -= reset_step;
+      }
+      else {
+        desire_angle[i] += reset_step;
+      }
+    }
+  }
+  for (int i = 2; i < NB_ESC; ++i) {
+    desire_angle[i] = command_angle[i];
+    if (fabs(180.0 - desire_angle[i]) < 1.0) {
+      desire_angle[i] = 180.0;
+    }
+    else {
+      if (desire_angle[i] < 180.0) {
+        desire_angle[i] += reset_step;
+      }
+      else {
+        desire_angle[i] -= reset_step;
+      }
+    }
+  }
+}
+
 void setup() {
   time_former = micros();
 
@@ -686,7 +726,9 @@ void loop() {
       turn_left();
     else if (RPi_comm.gait == 7)
       turn_right();
-      
+    else if (RPi_comm.gait == 8)
+      legs_sync();
+
     if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5) {
       for (int i = 0; i < NB_ESC; ++i) {
         command_angle[i] = 360.0 - desire_angle[i];
