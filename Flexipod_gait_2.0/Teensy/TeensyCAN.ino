@@ -71,6 +71,7 @@ double b_2_bound = (90.0 + 0.5 * CONTACT_ANGLE) - k_2_bound * ((90.0 + 0.5 * CON
 double timestamp_1;
 double timestamp_2;
 
+bool   robot_flip;
 Teensycomm_struct_t Teensy_comm    = {{}, {}, {}, {}, {}, {}, {}, {}, {}};   // For holding data sent to RPi
 RPicomm_struct_t    RPi_comm       = {{}, {}};                   // For holding data received from RPi
 
@@ -520,6 +521,35 @@ void bound_gait() {
 }
 
 void flip_gait() {
+  double front_leg_step = 0.5;
+  double back_leg_step = 0.2;
+
+  if (fabs(270.0 - desire_angle[0]) < 1.0) 
+    desire_angle[0] = 270.0;
+  else
+    desire_angle[0] += front_leg_step;
+  
+  if (fabs(270.0 - desire_angle[3]) < 1.0)
+    desire_angle[3] = 270.0;
+  else
+    desire_angle[3] += front_leg_step;
+  
+  if (fabs(120.0 - desire_angle[1]) < 1.0)
+    desire_angle[1] = 120.0;
+  else
+    desire_angle[1] += back_leg_step;
+  if (fabs(120.0 - desire_angle[2]) < 1.0)
+    desire_angle[2] = 120.0;
+  else
+    desire_angle[2] += back_leg_step;
+
+}
+
+void turn_left() {
+  
+}
+
+void turn_right() {
   
 }
 
@@ -652,8 +682,12 @@ void loop() {
       flip_gait();
     else if (RPi_comm.gait == 5)
       legs_reset();
+    else if (RPi_comm.gait == 6)
+      turn_left();
+    else if (RPi_comm.gait == 7)
+      turn_right();
       
-    if (fabs(eul.roll_e) > PI / 2.0) {
+    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5) {
       for (int i = 0; i < NB_ESC; ++i) {
         command_angle[i] = 360.0 - desire_angle[i];
       }
