@@ -729,7 +729,7 @@ void loop() {
     else if (RPi_comm.gait == 8)
       legs_sync();
 
-    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5) {
+    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
       for (int i = 0; i < NB_ESC; ++i) {
         command_angle[i] = 360.0 - desire_angle[i];
       }
