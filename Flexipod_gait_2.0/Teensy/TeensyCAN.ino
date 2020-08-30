@@ -521,27 +521,27 @@ void bound_gait() {
 }
 
 void flip_gait() {
-  double front_leg_step = 0.5;
-  double back_leg_step = 0.2;
+  double front_leg_step = 0.2;
+  double back_leg_step = 0.8;
 
-  if (fabs(270.0 - desire_angle[0]) < 1.0) 
-    desire_angle[0] = 270.0;
+  if (fabs(120.0 - desire_angle[0]) < 1.0) 
+    desire_angle[0] = 120.0;
   else
-    desire_angle[0] += front_leg_step;
+    desire_angle[0] -= front_leg_step;
   
-  if (fabs(270.0 - desire_angle[3]) < 1.0)
-    desire_angle[3] = 270.0;
+  if (fabs(240.0 - desire_angle[3]) < 1.0)
+    desire_angle[3] = 240.0;
   else
-    desire_angle[3] += front_leg_step;
+    desire_angle[3] -= front_leg_step;
   
-  if (fabs(120.0 - desire_angle[1]) < 1.0)
-    desire_angle[1] = 120.0;
+  if (fabs(300.0 - desire_angle[1]) < 1.0)
+    desire_angle[1] = 300.0;
   else
-    desire_angle[1] += back_leg_step;
-  if (fabs(120.0 - desire_angle[2]) < 1.0)
-    desire_angle[2] = 120.0;
+    desire_angle[1] -= back_leg_step;
+  if (fabs(60.0 - desire_angle[2]) < 1.0)
+    desire_angle[2] = 60.0;
   else
-    desire_angle[2] += back_leg_step;
+    desire_angle[2] -= back_leg_step;
 
 }
 
