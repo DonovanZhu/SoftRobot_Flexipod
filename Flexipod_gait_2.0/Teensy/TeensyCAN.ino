@@ -73,6 +73,8 @@ double timestamp_2;
 
 int    former_gait = 5; // reset legs
 bool   gait_transfer = false;
+double next_gait_angle[4] = {0.0, 0.0, 0.0, 0.0};
+double former_roll_angle = 0.0;
 
 Teensycomm_struct_t Teensy_comm = {{}, {}, {}, {}, {}, {}, {}, {}, {}};   // For holding data sent to RPi
 RPicomm_struct_t    RPi_comm    = {{}, {}};                   // For holding data received from RPi
@@ -136,16 +138,10 @@ void Angle_Sync_Loop() {
 
     ang_command[i] = k_p_ang * ang_error[i];
 
-    if (gait_transfer){
-      constrain(ang_command[i], -60.0, 60.0);
-    }
-    else {
-      constrain(ang_command[i], -500.0, 500.0);
-    }
+    constrain(ang_command[i], -500.0, 500.0);
     desired_speed[i] = ang_command[i];
   }
-  if ((fabs(ang_error[0]) + fabs(ang_error[1]) + fabs(ang_error[2]) + fabs(ang_error[3])) / 4.0 < 1.0)
-    gait_transfer = false;
+
 }
 
 //
@@ -536,7 +532,7 @@ void flip_gait() {
   if (fabs(120.0 - desire_angle[0]) < 1.0)
     desire_angle[0] = 120.0;
   else
-    desire_angle[0] -= front_leg_step;
+    desire_angle[0] += front_leg_step;
 
   if (fabs(240.0 - desire_angle[3]) < 1.0)
     desire_angle[3] = 240.0;
@@ -546,7 +542,7 @@ void flip_gait() {
   if (fabs(300.0 - desire_angle[1]) < 1.0)
     desire_angle[1] = 300.0;
   else
-    desire_angle[1] -= back_leg_step;
+    desire_angle[1] += back_leg_step;
   if (fabs(60.0 - desire_angle[2]) < 1.0)
     desire_angle[2] = 60.0;
   else
@@ -555,7 +551,7 @@ void flip_gait() {
 }
 
 void turn_left() {
-  double turn_step = 0.5;
+  double turn_step = 0.18;
   for (int i = 0; i < NB_ESC; ++i) {
     desire_angle[i] = command_angle[i];
     desire_angle[i] -= turn_step;
@@ -563,7 +559,7 @@ void turn_left() {
 }
 
 void turn_right() {
-  double turn_step = 0.5;
+  double turn_step = 0.18;
   for (int i = 0; i < NB_ESC; ++i) {
     desire_angle[i] = command_angle[i];
     desire_angle[i] += turn_step;
@@ -721,7 +717,8 @@ void loop() {
   }
 
   if (RPi_comm.speedcommand != 0.0) {
-    if (RPi_comm.gait != former_gait) {
+    if (RPi_comm.gait != former_gait && RPi_comm.gait != 4 && RPi_comm.gait != 5 && RPi_comm.gait != 8) {
+      
       gait_transfer = true;
       if (RPi_comm.gait == 1)
         trot_gait();
@@ -729,17 +726,45 @@ void loop() {
         crawl_gait();
       else if (RPi_comm.gait == 3)
         bound_gait();
-      else if (RPi_comm.gait == 4)
-        flip_gait();
-      else if (RPi_comm.gait == 5)
-        legs_reset();
       else if (RPi_comm.gait == 6)
         turn_left();
       else if (RPi_comm.gait == 7)
         turn_right();
-      else if (RPi_comm.gait == 8)
+
+      if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 6 && RPi_comm.gait != 7) {
+        for (int i = 0; i < NB_ESC; ++i) {
+          next_gait_angle[i] = 360.0 - desire_angle[i];
+        }
+      }
+      else {
+        for (int i = 0; i < NB_ESC; ++i) {
+          next_gait_angle[i] = desire_angle[i];
+        }
+      }
+
+      if (former_gait == 1)
+        trot_gait();
+      else if (former_gait == 2)
+        crawl_gait();
+      else if (former_gait == 3)
+        bound_gait();
+      else if (former_gait == 4)
+        flip_gait();
+      else if (former_gait == 5)
+        legs_reset();
+      else if (former_gait == 6)
+        turn_left();
+      else if (former_gait == 7)
+        turn_right();
+      else if (former_gait == 8)
         legs_sync();
+      if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
+        for (int i = 0; i < NB_ESC; ++i) {
+          desire_angle[i] = 360.0 - desire_angle[i];
+        }
+      }   
     }
+
     if (!gait_transfer) {
       if (RPi_comm.gait == 1)
         trot_gait();
@@ -758,7 +783,30 @@ void loop() {
       else if (RPi_comm.gait == 8)
         legs_sync();
     }
-    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
+
+    if (gait_transfer) {
+      double gait_transfer_step = 0.18;
+      for (int i = 0; i < NB_ESC; ++i) {
+             
+        
+        if (fabs(desire_angle[i] - next_gait_angle[i]) < 1.0) {
+          desire_angle[i] = next_gait_angle[i];
+        }
+        else {
+          if (desire_angle[i] < next_gait_angle[i]) {
+            desire_angle[i] += gait_transfer_step;
+          }
+          else {
+            desire_angle[i] -= gait_transfer_step;
+          }
+        }
+      }
+    }
+
+    former_gait = RPi_comm.gait;
+    former_roll_angle = eul.roll_e;
+    
+    if (fabs(eul.roll_e) > PI / 2.0 && RPi_comm.gait != 4 && RPi_comm.gait != 5 && RPi_comm.gait != 6 && RPi_comm.gait != 7 && RPi_comm.gait != 8) {
       for (int i = 0; i < NB_ESC; ++i) {
         command_angle[i] = 360.0 - desire_angle[i];
       }
@@ -768,16 +816,27 @@ void loop() {
         command_angle[i] = desire_angle[i];
       }
     }
+
+    if (gait_transfer) {
+      for (int i = 0; i < NB_ESC; ++i) 
+        command_angle[i] = desire_angle[i];
+      double transfer_angle_error = 0.0;
+      for (int i = 0; i < NB_ESC; ++i)
+        transfer_angle_error += fabs(desire_angle[i] - next_gait_angle[i]);
+      if (transfer_angle_error / 4.0 < 1.0)
+        gait_transfer = false;
+    }
+
   }
 
   for (int i = 0; i < NB_ESC; ++i) {
-    while (desire_angle[i] > 360.0) {
+    while (desire_angle[i] >= 360.0) {
       desire_angle[i] -= 360.0;
     }
     while (desire_angle[i] < 0.0) {
       desire_angle[i] += 360.0;
     }
-    while (command_angle[i] > 360.0) {
+    while (command_angle[i] >= 360.0) {
       command_angle[i] -= 360.0;
     }
     while (command_angle[i] < 0.0) {
@@ -787,7 +846,7 @@ void loop() {
   // Read data from motors
   Read_CAN();
 
-  // Do Pi angle synchronizing control
+  // Do PI angle synchronizing control
   Angle_Sync_Loop();
   // Do PI speed contol, then sending command to motor through CAN bus
   Speed_Control_Loop();
