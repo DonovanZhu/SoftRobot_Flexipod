@@ -52,3 +52,11 @@ When using g++ -I msgpack-c/include your_source_file.cpp, fatal error: msgpack.h
 
     sudo apt install libmsgpack-dev
 
+### Change I2C transport speed on Raspberry pi
+
+    sudo su
+    sudo nano /root/Arduino/libraries/Adafruit_BusIO/Adafruit_I2CDevice.cpp
+    
+Under function : bool Adafruit_I2CDevice::begin(bool addr_detect, adding:
+
+    _wire->setClock(1200000); //1200000 can be replaced by any speed you want
