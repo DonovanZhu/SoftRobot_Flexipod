@@ -2,7 +2,7 @@
 #define __HOST_H
 
 
-#define MOTOR_NUM				   	3			// Number of ESCs
+#define MOTOR_NUM				   	12			// Number of ESCs
 
 #define USB_UART_SPEED     		1000000		// Baudrate of the teeensy USB serial link
 
@@ -23,21 +23,21 @@
 // Teensy->host communication data structure
 // sizeof(ESCPID_comm)=64 to match USB 1.0 buffer size
 typedef struct {
-  double    angle[MOTOR_NUM];      // Motors rotation angle
-  double    rspeed[MOTOR_NUM];     // Motors rpm
-  double	torque[MOTOR_NUM];     // Motors torque
-  double    comd[MOTOR_NUM];    // Motors speed command
-  double    acc[3];						  // Acceleration in X Y Z direction, m/s^2
-  double    gyr[3];						  // Gyroscope in X Y Z direction, deg/s
-  double    mag[3];             // Magnetometer in X Y Z, uT
-  double    eular[3];
-  double    timestamps;
+  float    angle[MOTOR_NUM];      // Motors rotation angle
+  float    rspeed[MOTOR_NUM];     // Motors rpm
+  float	   torque[MOTOR_NUM];     // Motors torque
+  float    comd[MOTOR_NUM];    // Motors speed command
+  float    acc[3];						  // Acceleration in X Y Z direction, m/s^2
+  float    gyr[3];						  // Gyroscope in X Y Z direction, deg/s
+  float    mag[3];             // Magnetometer in X Y Z, uT
+  float    eular[3];
+  float    timestamps;
 } Teensycomm_struct_t;
 
 // Host->teensy communication data structure
 // sizeof(RPi_comm)=64 to match USB 1.0 buffer size
 typedef struct {
-  double    comd[MOTOR_NUM];        		// Desired Speed, rpm
+  float    comd[MOTOR_NUM];        		// Desired Speed, rpm
 } Jetson_comm_struct_t;
 
 // Prototypes

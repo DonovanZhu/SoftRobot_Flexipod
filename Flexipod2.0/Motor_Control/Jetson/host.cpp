@@ -28,21 +28,21 @@
 using namespace std;
 
 // Globals
-int Host_fd = HOST_ERROR_FD;        // Serial port file descriptor
+int                    Host_fd = HOST_ERROR_FD;        // Serial port file descriptor
                             
-char Host_devname[PATH_MAX] = ""; 	// Serial port devname used to get fd with open
+char                   Host_devname[PATH_MAX] = ""; 	// Serial port devname used to get fd with open
                             
-struct termios Host_oldtio;  		// Backup of initial tty configuration
+struct                 termios Host_oldtio;  		// Backup of initial tty configuration
 
-Teensycomm_struct_t Teensy_comm;	// A data struct received from Teensy
-Jetson_comm_struct_t	Jetson_comm;		// A data struct sent to Teensy
+Teensycomm_struct_t    Teensy_comm;	// A data struct received from Teensy
+Jetson_comm_struct_t   Jetson_comm;		// A data struct sent to Teensy
 
-double 	desire_speed[MOTOR_NUM];		// The deisred speed
+float 	               desire_speed[MOTOR_NUM];		// The deisred speed
 	
 // Receiving the desired speed data by UDP and hold it in this class
 class MotorCommand {
 public:
-	double 	robot_command[MOTOR_NUM];
+	float 	robot_command[MOTOR_NUM];
 	MSGPACK_DEFINE(robot_command);
 };
 
@@ -53,15 +53,15 @@ public:
 
 class MotorData {
 public:
-	double angle[MOTOR_NUM]; 		// Rotation angle, unit degree
-	double rspeed[MOTOR_NUM]; 		// Rotation speed, unit rpm
-	double torque[MOTOR_NUM]; 		// Rotation torque, unit N*m
-	double comd[MOTOR_NUM];  	// Desired speed, unit rpm
-	double acc[3];				// Acceleration of IMU, unit m/s^2
-	double gyr[3];				// Gyroscope, unit deg/s
-	double mag[3];
-	double eular[3];
-	double timestamps;
+	float angle[MOTOR_NUM]; 		// Rotation angle, unit degree
+	float rspeed[MOTOR_NUM]; 		// Rotation speed, unit rpm
+	float torque[MOTOR_NUM]; 		// Rotation torque, unit N*m
+	float comd[MOTOR_NUM];  	// Desired speed, unit rpm
+	float acc[3];				// Acceleration of IMU, unit m/s^2
+	float gyr[3];				// Gyroscope, unit deg/s
+	float mag[3];
+	float eular[3];
+	float timestamps;
 	MSGPACK_DEFINE(angle, rspeed, torque, comd, acc, gyr, mag, eular, timestamps);
 };
 
@@ -263,120 +263,116 @@ void* create_shared_memory(size_t size) {
 }
 
 int main( ) {
-	int init_command[2] = {0, 0};
-	int* shmem = (int*)create_shared_memory(sizeof(int) * 2);
-	memcpy(shmem, init_command, sizeof(init_command));
-	
 	for (int i = 0; i < MOTOR_NUM; ++i)
 		desire_speed[i] = 0.0;
 	
-	int pid = fork();
+	Teensycomm_struct_t *comm;
+	int ret;
 
-	if (pid == 0) {
-	/********************UDP_Receiving_Initializing********************/
-		int sock_recv, length_recv;
-		socklen_t fromlen;
-		struct sockaddr_in server_recv;
-		struct sockaddr_in hold_recv;
-
-		sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
-		
-		length_recv = sizeof(server_recv);
-		bzero(&server_recv,length_recv);
-		
-		server_recv.sin_family = AF_INET;
-		server_recv.sin_addr.s_addr = INADDR_ANY;
-		server_recv.sin_port = htons(32001);	// Setting port of this program
-		bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
-		fromlen = sizeof(struct sockaddr_in);
-		MotorCommand recv;		// For holding the received class
-	/******************************************************************/
-		char buf_UDP_recv[128]; 			// for holding UDP data
-		int command_recv[MOTOR_NUM];
-		while (1) {
-			
-			int datalength = recvfrom(sock_recv, buf_UDP_recv, 128, 0, (struct sockaddr *)&hold_recv, &fromlen);
-			msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
-			msgpack::object obj = oh.get();
-			obj.convert(recv);
-			
-			for (int i = 0; i < MOTOR_NUM; ++i) {
-				command_recv[i] = (int)(recv.robot_command[i] * 10000000.0);
-				// printf("%f\t", recv.robot_command[i]);
-			}
-			// printf("\n");
-			memcpy(shmem, command_recv, sizeof(command_recv));
-		}
-	} 
+	// Initialize serial port
+	if (Host_init_port(HOST_DEV_SERIALNB)) {
+		fprintf(stderr, "Error initializing serial port.\n");
+		exit(-1);
+	}
 	
-	else {
-	/*********************UDP_Sending_Initializing*********************/
-		int sock_send, length_send;
-		struct sockaddr_in client_send;
+/********************UDP_Receiving_Initializing********************/
+	int sock_recv, length_recv;
+	socklen_t fromlen;
+	struct sockaddr_in server_recv;
+	struct sockaddr_in hold_recv;
 
-		sock_send = socket(AF_INET, SOCK_DGRAM, 0);
-		
-		length_send = sizeof(client_send);
-		bzero(&client_send,length_send);
-		
-		client_send.sin_family = AF_INET;
-		client_send.sin_port = htons(32000); // Port of aim program
-		inet_pton(AF_INET, "192.168.1.231", &client_send.sin_addr); // Address
-		bind(sock_send,(struct sockaddr *)&client_send,length_send);
-		//UdpDataSend msg_send;			// For holding the sent class
-	/******************************************************************/
+	sock_recv = socket(AF_INET, SOCK_DGRAM, 0);
 	
-		Teensycomm_struct_t *comm;
-		int ret;
+	length_recv = sizeof(server_recv);
+	bzero(&server_recv,length_recv);
+	
+	server_recv.sin_family = AF_INET;
+	server_recv.sin_addr.s_addr = INADDR_ANY;
+	server_recv.sin_port = htons(32001);	// Setting port of this program
+	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
+	fromlen = sizeof(struct sockaddr_in);
+	MotorCommand recv;		// For holding the received class
+/******************************************************************/
+	
+/*********************UDP_Sending_Initializing*********************/
+	int sock_send, length_send;
+	struct sockaddr_in client_send;
 
-		// Initialize serial port
-		if (Host_init_port(HOST_DEV_SERIALNB)) {
-			fprintf(stderr, "Error initializing serial port.\n");
-			exit(-1);
+	sock_send = socket(AF_INET, SOCK_DGRAM, 0);
+	
+	length_send = sizeof(client_send);
+	bzero(&client_send,length_send);
+	
+	client_send.sin_family = AF_INET;
+	client_send.sin_port = htons(32000); // Port of aim program
+	inet_pton(AF_INET, "192.168.137.1", &client_send.sin_addr); // Address
+	bind(sock_send,(struct sockaddr *)&client_send,length_send);
+	//UdpDataSend msg_send;			// For holding the sent class
+/******************************************************************/
+	char buf_UDP_recv[128]; 			// for holding UDP data
+	int command_recv[MOTOR_NUM];
+
+	while(1) {
+		int datalength = recvfrom(sock_recv, buf_UDP_recv, 128, 0, (struct sockaddr *)&hold_recv, &fromlen);
+		msgpack::object_handle oh = msgpack::unpack(buf_UDP_recv, datalength);
+		msgpack::object obj = oh.get();
+		obj.convert(recv);
+	
+		for (int i = 0; i < MOTOR_NUM ; i++) {
+			desire_speed[i] = recv.robot_command[i];
+			//desire_speed[i] = 0.0;
+			// printf("%f\t", desire_speed[i]);
 		}
-
-
-		while(1) {
-			for (int i = 0; i < MOTOR_NUM ; i++) {
-				desire_speed[i] = (double) *(shmem + i) / 10000000.0 ;
-				//desire_speed[i] = 0.0;
-				// printf("%f\t", desire_speed[i]);
-			}
-			// printf("\n");
-			
-			// Serial exchange with teensy
-			if ((ret = Host_comm_update(HOST_DEV_SERIALNB, &comm))) {
-				fprintf(stderr, "Error %d in Host_comm_update.\n", ret);
-				break;	
-			}
-			// After receiving the data from Teensy, save it into class SendMotorData
-						
-			for (int j = 0; j < MOTOR_NUM; ++j) {
-				
-				// Speed of motors:
-				SendMotorData.rspeed[j] = comm -> rspeed[j];
-				
-				// Angle of motors:
-				SendMotorData.angle[j] = comm -> angle[j];
-				
-				// Torque of motors:
-				SendMotorData.torque[j] = comm -> torque[j];
-				// Desired speed:
-				SendMotorData.comd[j] = comm -> comd[j];
-				printf("%f\t", SendMotorData.comd[j]);
-			}
-			printf("\n");
-			/*
-			std::stringstream send_stream;
-			msgpack::pack(send_stream, SendMotorData);
-			std::string const& data = send_stream.str();
-			sendto(sock_send, data.c_str(), data.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
-			*/
-		}
-		Host_release_port(HOST_DEV_SERIALNB);
+		// printf("\n");
 		
+		// Serial exchange with teensy
+		if ((ret = Host_comm_update(HOST_DEV_SERIALNB, &comm))) {
+			fprintf(stderr, "Error %d in Host_comm_update.\n", ret);
+			break;	
+		}
+		// After receiving the data from Teensy, save it into class SendMotorData
+					
+		for (int j = 0; j < MOTOR_NUM; ++j) {
+			
+			// Speed of motors:
+			SendMotorData.rspeed[j] = comm -> rspeed[j];
+			
+			// Angle of motors:
+			SendMotorData.angle[j] = comm -> angle[j];
+			
+			// Torque of motors:
+			SendMotorData.torque[j] = comm -> torque[j];
+			// Desired speed:
+			SendMotorData.comd[j] = comm -> comd[j];
+			
+
+			
+			SendMotorData.timestamps = comm -> timestamps;
+			
+		}
+		//printf("%f\t", SendMotorData.timestamps);
+		
+		
+		for (int i = 0; i < 3; ++i) {
+			SendMotorData.acc[i] = comm -> acc[i];
+			
+			SendMotorData.gyr[i] = comm -> gyr[i];
+			
+			SendMotorData.mag[i] = comm -> mag[i];
+			
+			SendMotorData.eular[i] = comm -> eular[i];
+			printf("%f\t", SendMotorData.eular[i]);
+		}
+		printf("\n");
+		
+		std::stringstream send_stream;
+		msgpack::pack(send_stream, SendMotorData);
+		std::string const& data = send_stream.str();
+		sendto(sock_send, data.c_str(), data.size(), 0, (struct sockaddr *)&client_send, sizeof(client_send));
 		
 	}
+	Host_release_port(HOST_DEV_SERIALNB);
+
 	return 0;
 }
 
