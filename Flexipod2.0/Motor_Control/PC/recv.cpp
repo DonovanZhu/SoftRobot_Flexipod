@@ -15,13 +15,13 @@ using namespace std;
 // Using this class to hold data from RPi
 class MotorData {
 public:
-	float angle[MOTOR_NUM]; 	// Rotation angle, unit degree
-	float rspeed[MOTOR_NUM]; 		// Rotation speed, unit rpm
-	float torque[MOTOR_NUM]; 	// Rotation torque, unit N*m
-	float comd[MOTOR_NUM];  // Desired speed, unit rpm
+	float angle[MOTOR_NUM]; 	// Rotation angle, unit rad
+	float rspeed[MOTOR_NUM]; 	// Rotation speed, unit rad/s
+	float torque[MOTOR_NUM]; 	// Rotation current, unit A
+	float comd[MOTOR_NUM];  // Desired position, unit rad
 	float acc[3];		// Acceleration of IMU, unit m/s^2
-	float gyr[3];		// Gyroscope, unit deg/s
-	float mag[3];
+	float gyr[3];		// Gyroscope, unit rad/s
+	float mag[3];		// Magnetometer, unit 
 	float eular[3];
 	float timestamps;
 	MSGPACK_DEFINE(angle, rspeed, torque, comd, acc, gyr, mag, eular, timestamps);
