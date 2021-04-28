@@ -207,10 +207,10 @@ void Jetson_Teensy () {
     Teensy_comm.acc[1] = accel.acceleration.y;
     Teensy_comm.acc[2] = accel.acceleration.z;
 
-    // Save gyroscope (deg/s) of IMU into struct Teensy_comm
-    Teensy_comm.gyr[0] = gyro.gyro.x;
-    Teensy_comm.gyr[1] = gyro.gyro.y;
-    Teensy_comm.gyr[2] = gyro.gyro.z;
+    // Save gyroscope (rad/s) of IMU into struct Teensy_comm
+    Teensy_comm.gyr[0] = gyro.gyro.x / 180.0 * PI;
+    Teensy_comm.gyr[1] = gyro.gyro.y / 180.0 * PI;
+    Teensy_comm.gyr[2] = gyro.gyro.z / 180.0 * PI;
 
     Teensy_comm.mag[0] = mage.magnetic.x;
     Teensy_comm.mag[1] = mage.magnetic.y;
