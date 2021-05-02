@@ -5,7 +5,7 @@
 #define MOTOR_NUM          12                 // Number of ESCs
 #define USB_UART_SPEED     1000000            // Baudrate of the teeensy USB serial link
 
-#define DRIVE_RATIO        8.0  // Drive ratio of motor gear box
+#define REDUCTION_RATIO        8.0  // Drive ratio of motor gear box
 
 // -0.0192715 -0.2800474 10.0537329 0.0136186 0.0011329 -0.0076148
 #define GRAVITY 9.802 // The gravity acceleration in New York City
