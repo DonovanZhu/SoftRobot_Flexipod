@@ -6,18 +6,23 @@
 
 FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> CAN_F; // CAN bus for upper body motors
 FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> CAN_B; // CAN bus for lower body motors
+
+
 // Globals
 float joint_pos_desired[MOTOR_NUM]  = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};   // desired joint(motor) position [rad]
-float deg_now[MOTOR_NUM];
-float deg_former[MOTOR_NUM];
+float rotor_pos[MOTOR_NUM];
+float rotor_pos_prev[MOTOR_NUM];
 int   r_num[MOTOR_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 float time_now;
 float time_former;
 
-float ang_recv[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-float vel_recv[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-float cur_recv[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+// Motor shaft position [rad]
+float joint_pos[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+// Motor shaft velocity [rad/s]
+float joint_vel[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+// Motor current [A]
+float joint_cur[MOTOR_NUM] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
 float joint_upper_limit[MOTOR_NUM] = { 2.4,  1.93,  1.6,  4.7,  1.93,  1.6,  4.7,  1.93,  1.6,  2.4,  1.93,  1.6};
 float joint_lower_limit[MOTOR_NUM] = {-4.7, -1.93, -1.6, -2.4, -1.93, -1.6, -2.4, -1.93, -1.6, -4.7, -1.93, -1.6};
@@ -27,17 +32,24 @@ float mag_tmp[3]; // magnetometer temporary data
 float gyr[3]; // gyroscope data
 
 float delta_t; // loop time difference
-Teensycomm_struct_t   Teensy_comm = {{}, {}, {}, {}, {}, {}, {}, {}, {}};   // For holding data sent to Jetson
-Jetson_comm_struct_t  Jetson_comm    = {{}};                   // For holding data received from Jetson
+Teensycomm_struct_t   teensy_comm = {{}, {}, {}, {}, {}, {}, {}, {}};   // For holding data sent to Jetson
+Jetson_comm_struct_t  jetson_comm    = {{}};                   // For holding data received from Jetson
 
-static uint8_t  *ptin  = (uint8_t*)(&Jetson_comm);
-static uint8_t  *ptout = (uint8_t*)(&Teensy_comm);
+static uint8_t  *ptin  = (uint8_t*)(&jetson_comm);
+static uint8_t  *ptout = (uint8_t*)(&teensy_comm);
 static int      in_cnt = 0;
 
 // Set CAN bus message structure as CAN2.0
 CAN_message_t msg_recv; // For receiving data on CAN bus
 CAN_message_t msg_send; // For sending data on CAN bus
 
+// lookup table to relate motor index i to the CAN bus and its motor CAN address
+// 0 stands for CAN_F, 1 stands for CAN_B
+bool joint_can_lane [MOTOR_NUM] = { 0,0,0,0,0,0,
+                                    1,1,1,1,1,1};
+// Motors' id from 0x141 to 0x146
+uint16_t joint_can_addr[MOTOR_NUM] = {0x141, 0x142, 0x143, 0144, 0x145, 0x146, 
+                                      0x141, 0x142, 0x143, 0144, 0x145, 0x146};
 /****************** IMU ***************************************/
 Adafruit_LSM6DS sox;
 Adafruit_LIS3MDL lis;
@@ -103,45 +115,61 @@ void Motor_Init() {
   // CAN_F is connected to upper body motors(id: 0x141 to 0x146)
   // CAN_B is connected to lower body motors(id: 0x141 to 0x146)
   for (int i = 0; i < MOTOR_NUM / 2; ++i) {
-      msg_send.id = 0x141 + i;
+      msg_send.id = joint_can_addr[i];
       CAN_F.write(msg_send);
+      msg_send.id = joint_can_addr[i + MOTOR_NUM / 2];
       CAN_B.write(msg_send);
   }
+  delay(400);
 }
 
-void Motor_Data(int id) {
+void processMotorData(int id) {
   // Receiving motor angle
   // Transfer hex number to rad
-  int deg = 0;
-  deg |= (int16_t)(unsigned char)msg_recv.buf[7] << 8; // Left move 8 bit
-  deg |= (int16_t)(unsigned char)msg_recv.buf[6];
-  deg_now[id] = (float)deg / 65535.0 * 2 * PI; // 65535(0xFFFF) refers to 2PI
-  if (deg_now[id] - deg_former[id] < -PI)
+  int rotor_pos_raw = 0; // Rotor position before devided by gear reduction
+  rotor_pos_raw |= (int16_t)(unsigned char)msg_recv.buf[7] << 8; // Left move 8 bit
+  rotor_pos_raw |= (int16_t)(unsigned char)msg_recv.buf[6];
+  rotor_pos[id] = (float)rotor_pos_raw / 65535.0 * 2 * PI; // 65535(0xFFFF) refers to 2PI
+  if (rotor_pos[id] - rotor_pos_prev[id] < -PI)
     r_num[id] += 1;
-  else if (deg_now[id] - deg_former[id] > PI)
+  else if (rotor_pos[id] - rotor_pos_prev[id] > PI)
     r_num[id] -= 1;
 
-  deg_former[id] = deg_now[id];
-  ang_recv[id] = (deg_now [id]+ r_num[id] * 2 * PI) / REDUCTION_RATIO;
+  // Calculate shaft angular position [rad]
+  rotor_pos_prev[id] = rotor_pos[id];
+  joint_pos[id] = (rotor_pos [id]+ r_num[id] * 2 * PI) / REDUCTION_RATIO;
 
-  int vel = 0;
-  vel |= (int16_t)(unsigned char)msg_recv.buf[5] << 8;
-  vel |= (int16_t)(unsigned char)msg_recv.buf[4];
-  if (vel > 0x8000)
-    vel -= 0x10000;
-  vel_recv[id] = (float)vel * PI / 180.0;
+  // Calculate shaft velocity [rad/s]
+  int rotor_vel_raw = 0;
+  rotor_vel_raw |= (int16_t)(unsigned char)msg_recv.buf[5] << 8;
+  rotor_vel_raw |= (int16_t)(unsigned char)msg_recv.buf[4];
 
-  int cur = 0;
-  cur |= (int16_t)(unsigned char)msg_recv.buf[3] << 8;
-  cur |= (int16_t)(unsigned char)msg_recv.buf[2];
-  if (cur > 0x8000)
-    cur -= 0x10000;
-  cur_recv[id] = (float)cur * 33.0 / 2048.0;
+  // 0x0001 to 0x8000 counter-clockwise, 0x8000: max counter-clockwise speed
+  // 0x8001 to 0xffff clockwise, 0x8001: max clockwise speed
+  // 0x0000 refers to stop
+  if (rotor_vel_raw > 0x8000)
+    rotor_vel_raw -= 0x10000;
+  joint_vel[id] = (float)rotor_vel_raw * PI / (180.0 * REDUCTION_RATIO);
+
+  // Calculate motor's current [A], -33A ~ 33A
+  int cur_raw = 0;
+  cur_raw |= (int16_t)(unsigned char)msg_recv.buf[3] << 8;
+  cur_raw |= (int16_t)(unsigned char)msg_recv.buf[2];
+  if (cur_raw > 0x8000)
+    cur_raw -= 0x10000;
+  joint_cur[id] = (float)cur_raw * 33.0 / 2048.0; // 2048 refers to 33A
 }
 
-void Angle_Control_Loop(int motor_id, float pos_command, bool front_legs) {
-  int pos = round(pos_command / 0.01);
+void Angle_Control_Loop(int motor_id, float pos_command) {
+  // Convert motor shaft angle command [rad] to rotor angle command [degree]
+  pos_command = pos_command * 180.0 * REDUCTION_RATIO / PI;
+  // see motor manual p12 (0xA3)
+  int32_t pos = (int32_t)round(pos_command / 0.01);
   
+  // Motor position command is clockwise
+  // 0x00000001 - 0x80000000 counter_clockwise
+  // 0x80000001 - 0xffffffff clockwise
+  // 0x00000000 position 0
   if (pos < 0)
     pos = 0x100000000 + pos;
 
@@ -151,7 +179,7 @@ void Angle_Control_Loop(int motor_id, float pos_command, bool front_legs) {
   unsigned int pos_4 = (pos >> 24) & 0xff;
 
   // Set the CAN message ID as 0x200
-  msg_send.id = motor_id;
+  msg_send.id = joint_can_addr[motor_id];
   msg_send.buf[0] = 0xA3;
   msg_send.buf[1] = 0x00;
   msg_send.buf[2] = 0x00;
@@ -162,23 +190,21 @@ void Angle_Control_Loop(int motor_id, float pos_command, bool front_legs) {
   msg_send.buf[7] = pos_4;
 
 
-  if (front_legs) {
-    int id = motor_id - 0x141;
+  if (joint_can_lane[motor_id]==0) {
     CAN_F.write(msg_send); // Write the message on CAN bus
     while (true) {
       if (CAN_F.read(msg_recv)) {
-        Motor_Data(id);
+        processMotorData(motor_id);
         break;
       }
     }
   }
     
   else {
-    int id = motor_id - 0x141 + (int)(MOTOR_NUM / 2);
     CAN_B.write(msg_send); // Write the message on CAN bus
     while (true) {
       if (CAN_B.read(msg_recv)) {
-        Motor_Data(id);
+        processMotorData(motor_id);
         break;
       }
     }
@@ -190,45 +216,44 @@ void Jetson_Teensy () {
 
 
   // Read all incoming bytes available until incoming structure is complete
-  while ((Serial.available() > 0) && (in_cnt < (int)sizeof(Jetson_comm)))
+  while ((Serial.available() > 0) && (in_cnt < (int)sizeof(jetson_comm)))
     ptin[in_cnt++] = Serial.read();
 
   // Check if a complete incoming packet is available
-  if (in_cnt == (int)sizeof(Jetson_comm)) {
+  if (in_cnt == (int)sizeof(jetson_comm)) {
 
     // Clear incoming bytes counter
     in_cnt = 0;
 
-    // Save angle, speed and torque into struct Teensy_comm
+    // Save angle, speed and torque into struct teensy_comm
     for (int i = 0; i < MOTOR_NUM; i++) {
-      Teensy_comm.angle[i]  = ang_recv[i];
-      Teensy_comm.rspeed[i] = vel_recv[i];
-      Teensy_comm.torque[i] = cur_recv[i];
-      Teensy_comm.comd[i] = joint_pos_desired[i];
+      teensy_comm.joint_pos[i]  = joint_pos[i];
+      teensy_comm.joint_vel[i] = joint_vel[i];
+      teensy_comm.joint_cur[i] = joint_cur[i];
     }
 
     // Read data from IMU(MPU9250)
-   // Save acceleration (m/s^2) of IMU into struct Teensy_comm
-    Teensy_comm.acc[0] = accel.acceleration.x;
-    Teensy_comm.acc[1] = accel.acceleration.y;
-    Teensy_comm.acc[2] = accel.acceleration.z;
+   // Save acceleration (m/s^2) of IMU into struct teensy_comm
+    teensy_comm.acc[0] = accel.acceleration.x;
+    teensy_comm.acc[1] = accel.acceleration.y;
+    teensy_comm.acc[2] = accel.acceleration.z;
 
-    // Save gyroscope (rad/s) of IMU into struct Teensy_comm
-    Teensy_comm.gyr[0] = gyro.gyro.x / 180.0 * PI;
-    Teensy_comm.gyr[1] = gyro.gyro.y / 180.0 * PI;
-    Teensy_comm.gyr[2] = gyro.gyro.z / 180.0 * PI;
+    // Save gyroscope (rad/s) of IMU into struct teensy_comm
+    teensy_comm.gyr[0] = gyro.gyro.x / 180.0 * PI;
+    teensy_comm.gyr[1] = gyro.gyro.y / 180.0 * PI;
+    teensy_comm.gyr[2] = gyro.gyro.z / 180.0 * PI;
 
-    Teensy_comm.mag[0] = mage.magnetic.x;
-    Teensy_comm.mag[1] = mage.magnetic.y;
-    Teensy_comm.mag[2] = mage.magnetic.z;
+    teensy_comm.mag[0] = mage.magnetic.x;
+    teensy_comm.mag[1] = mage.magnetic.y;
+    teensy_comm.mag[2] = mage.magnetic.z;
 
-    Teensy_comm.eular[0] = eul.roll_e;
-    Teensy_comm.eular[1] = eul.pitch_e;
-    Teensy_comm.eular[2] = eul.yaw_e;
+    teensy_comm.eular[0] = eul.roll_e;
+    teensy_comm.eular[1] = eul.pitch_e;
+    teensy_comm.eular[2] = eul.yaw_e;
 
-    Teensy_comm.timestamps = time_now / 1000000.0;
-    // Send data structure Teensy_comm to Jetson
-    Serial.write(ptout, sizeof(Teensy_comm));
+    teensy_comm.timestamps = time_now / 1000000.0;
+    // Send data structure teensy_comm to Jetson
+    Serial.write(ptout, sizeof(teensy_comm));
 
     // Force immediate transmission
     Serial.send_now();
@@ -242,19 +267,20 @@ void setup() {
   Serial.begin(USB_UART_SPEED);
   delay(1000);
 
-  
+  // sox stands for Adafruit_LSM6DSOX, a 6 DoF IMU contains accelerometer and gyroscope
   sox.begin_I2C();
   sox.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
   sox.setGyroRange(LSM6DS_GYRO_RANGE_250_DPS );
   sox.setAccelDataRate(LSM6DS_RATE_104_HZ);
   sox.setGyroDataRate(LSM6DS_RATE_104_HZ);
 
+  // lis stands for megnatometer Adafruit_LIS3MDL
   lis.begin_I2C();          // hardware I2C mode, can pass in address & alt Wire
   lis.setPerformanceMode(LIS3MDL_MEDIUMMODE);
   lis.setOperationMode(LIS3MDL_CONTINUOUSMODE);
   lis.setDataRate(LIS3MDL_DATARATE_155_HZ);
   lis.setRange(LIS3MDL_RANGE_4_GAUSS);
-  lis.setIntThreshold(500);
+  //lis.setIntThreshold(500);
   lis.configInterrupt(false, false, true, true, false, true); // enabled!
   
   CAN_F.begin();
@@ -266,7 +292,7 @@ void setup() {
   CAN_B.setClock(CLK_60MHz);
   // Open Serial port in speed 1000000 Baudrate
   Motor_Init();
-  delay(400);
+  
   time_former = (float)micros();
 }
 
@@ -287,7 +313,7 @@ void loop() {
   qua.y = q[2];
   qua.z = q[3];
   eul = ToEulerAngles(qua);
-  eul.yaw_e += 0.8;
+  eul.yaw_e += 0.22; // 0.22 rad is the Magnetic Declination in New York
   if (eul.yaw_e > PI) {
     eul.yaw_e -= 2 * PI;
   }
@@ -295,18 +321,16 @@ void loop() {
   Jetson_Teensy ();
 
   for (int i = 0; i < MOTOR_NUM; ++i) {
-    joint_pos_desired[i] = Jetson_comm.comd[i];
+    joint_pos_desired[i] = jetson_comm.comd[i];
     if (joint_pos_desired[i] > joint_upper_limit[i])
       joint_pos_desired[i] = joint_upper_limit[i];
     else if (joint_pos_desired[i] < joint_lower_limit[i])
       joint_pos_desired[i] = joint_lower_limit[i];
-    joint_pos_desired[i] = joint_pos_desired[i] * 180.0 * REDUCTION_RATIO / PI;
-
-
   }
   
   for (int i = 0; i < MOTOR_NUM / 2; ++i){
-      Angle_Control_Loop(0x141 + i, joint_pos_desired[i], true);
-      Angle_Control_Loop(0x141 + i, joint_pos_desired[i + (int)(MOTOR_NUM / 2)], false);
+      Angle_Control_Loop(i, joint_pos_desired[i]);
+      int j = i + MOTOR_NUM / 2;
+      Angle_Control_Loop(j, joint_pos_desired[j]);
   }
 }

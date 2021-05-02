@@ -23,10 +23,9 @@
 // Teensy->host communication data structure
 // sizeof(ESCPID_comm)=64 to match USB 1.0 buffer size
 typedef struct {
-  float    angle[MOTOR_NUM];      // Motors rotation angle
-  float    rspeed[MOTOR_NUM];     // Motors rpm
+  float    joint_pos[MOTOR_NUM];      // Motors rotation angle
+  float    joint_vel[MOTOR_NUM];     // Motors rpm
   float	   torque[MOTOR_NUM];     // Motors torque
-  float    comd[MOTOR_NUM];    // Motors speed command
   float    acc[3];						  // Acceleration in X Y Z direction, m/s^2
   float    gyr[3];						  // Gyroscope in X Y Z direction, deg/s
   float    mag[3];             // Magnetometer in X Y Z, uT

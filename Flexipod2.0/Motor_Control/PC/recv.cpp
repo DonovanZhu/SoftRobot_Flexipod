@@ -15,16 +15,15 @@ using namespace std;
 // Using this class to hold data from RPi
 class MotorData {
 public:
-	float angle[MOTOR_NUM]; 	// Rotation angle, unit rad
-	float rspeed[MOTOR_NUM]; 	// Rotation speed, unit rad/s
-	float torque[MOTOR_NUM]; 	// Rotation current, unit A
-	float comd[MOTOR_NUM];  // Desired position, unit rad
+	float joint_pos[MOTOR_NUM]; 	// Rotation angle, unit rad
+	float joint_vel[MOTOR_NUM]; 	// Rotation speed, unit rad/s
+	float joint_cur[MOTOR_NUM]; 	// Rotation current, unit A
 	float acc[3];		// Acceleration of IMU, unit m/s^2
 	float gyr[3];		// Gyroscope, unit rad/s
 	float mag[3];		// Magnetometer, unit 
 	float eular[3];
 	float timestamps;
-	MSGPACK_DEFINE(angle, rspeed, torque, comd, acc, gyr, mag, eular, timestamps);
+	MSGPACK_DEFINE(joint_pos, joint_vel, joint_cur, acc, gyr, mag, eular, timestamps);
 };
 
 void main()
@@ -79,9 +78,9 @@ void main()
 		// Save data into txt file
 		/*
 		file << recv[0].timestamps << "\t";
-		file << recv[0].angle[0] << "\t" << recv[0].angle[1] << "\t" << recv[0].angle[2] << "\t" << recv[0].angle[3] << "\t";
+		file << recv[0].joint_pos[0] << "\t" << recv[0].joint_pos[1] << "\t" << recv[0].joint_pos[2] << "\t" << recv[0].joint_pos[3] << "\t";
 		file << recv[0].rpm[0] << "\t" << recv[0].rpm[1] << "\t" << recv[0].rpm[2] << "\t" << recv[0].rpm[3] << "\t";
-		file << recv[0].torque[0] << "\t" << recv[0].torque[1] << "\t" << recv[0].torque[2] << "\t" << recv[0].torque[3] << "\t";
+		file << recv[0].joint_cur[0] << "\t" << recv[0].joint_cur[1] << "\t" << recv[0].joint_cur[2] << "\t" << recv[0].joint_cur[3] << "\t";
 		file << recv[0].command[0] << "\t" << recv[0].command[1] << "\t" << recv[0].command[2] << "\t" << recv[0].command[3] << "\t";
 		file << recv[0].acc[0] << "\t" << recv[0].acc[1] << "\t" << recv[0].acc[2] << "\t";
 		file << recv[0].gyr[0] << "\t" << recv[0].gyr[1] << "\t" << recv[0].gyr[2] << "\t";

@@ -12,7 +12,7 @@ volatile float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};	// quaternion of sensor frame re
 //---------------------------------------------------------------------------------------------------
 // AHRS algorithm update
 
-void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat)
+void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float delta_t)
 {
     float beta = 1.5;
     float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
@@ -88,10 +88,10 @@ void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, 
     qDot4 = 0.5f * (q1 * gz + q2 * gy - q3 * gx) - beta * s4;
 
     // Integrate to yield quaternion
-    q1 += qDot1 * deltat;
-    q2 += qDot2 * deltat;
-    q3 += qDot3 * deltat;
-    q4 += qDot4 * deltat;
+    q1 += qDot1 * delta_t;
+    q2 += qDot2 * delta_t;
+    q3 += qDot3 * delta_t;
+    q4 += qDot4 * delta_t;
     norm = sqrtf(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);    // normalise quaternion
     norm = 1.0f/norm;
     q[0] = q1 * norm;

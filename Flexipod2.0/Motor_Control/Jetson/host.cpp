@@ -34,8 +34,8 @@ char                   Host_devname[PATH_MAX] = ""; 	// Serial port devname used
                             
 struct                 termios Host_oldtio;  		// Backup of initial tty configuration
 
-Teensycomm_struct_t    Teensy_comm;	// A data struct received from Teensy
-Jetson_comm_struct_t   Jetson_comm;		// A data struct sent to Teensy
+Teensycomm_struct_t    teensy_comm;	// A data struct received from Teensy
+Jetson_comm_struct_t   jetson_comm;		// A data struct sent to Teensy
 
 float 	               desire_speed[MOTOR_NUM];		// The deisred speed
 	
@@ -53,16 +53,15 @@ public:
 
 class MotorData {
 public:
-	float angle[MOTOR_NUM]; 		// Rotation angle, unit degree
-	float rspeed[MOTOR_NUM]; 		// Rotation speed, unit rpm
-	float torque[MOTOR_NUM]; 		// Rotation torque, unit N*m
-	float comd[MOTOR_NUM];  	// Desired speed, unit rpm
+	float joint_pos[MOTOR_NUM]; 		// Rotation angle, unit degree
+	float joint_vel[MOTOR_NUM]; 		// Rotation speed, unit rad/s
+	float joint_cur[MOTOR_NUM]; 		// Rotation current, unit N*m
 	float acc[3];				// Acceleration of IMU, unit m/s^2
 	float gyr[3];				// Gyroscope, unit deg/s
 	float mag[3];
 	float eular[3];
 	float timestamps;
-	MSGPACK_DEFINE(angle, rspeed, torque, comd, acc, gyr, mag, eular, timestamps);
+	MSGPACK_DEFINE(joint_pos, joint_vel, joint_cur, acc, gyr, mag, eular, timestamps);
 };
 
 // set a object for sending UDP through msgpack
@@ -144,7 +143,7 @@ int Host_init_port(uint32_t serial_nb) {
   
 	// Initialize corresponding data structure
 	for (int i = 0; i < MOTOR_NUM; ++i)
-		Jetson_comm.comd[i] =  0.0;
+		jetson_comm.comd[i] =  0.0;
 
 	/* Save current port settings */
 	tcgetattr(check_fd, &Host_oldtio);
@@ -202,12 +201,12 @@ int Host_comm_update( uint32_t            serial_nb,
   
 	// Update output data structue
 	for (int i = 0; i < MOTOR_NUM; i++)
-		Jetson_comm.comd[i] = desire_speed[i];
+		jetson_comm.comd[i] = desire_speed[i];
 
 	// Send output structure
-	res = write(Host_fd, &Jetson_comm, sizeof(Jetson_comm));
+	res = write(Host_fd, &jetson_comm, sizeof(jetson_comm));
 	if (res < 0) {
-		perror("write Jetson_comm");
+		perror("write jetson_comm");
 		return HOST_ERROR_WRITE_SER;
 	}
   
@@ -216,7 +215,7 @@ int Host_comm_update( uint32_t            serial_nb,
 
 	// Reset byte counter and magic number
 	res = 0;
-	pt_in = (uint8_t*)(&Teensy_comm);
+	pt_in = (uint8_t*)(&teensy_comm);
 
 	do {
 		ret = read(Host_fd, &pt_in[res], 1);
@@ -228,10 +227,10 @@ int Host_comm_update( uint32_t            serial_nb,
 		// Read error
 		if (ret < 0)
 			break;
-	} while (res < sizeof(Teensy_comm));
+	} while (res < sizeof(teensy_comm));
 
 	// Check response size
-	if (res != sizeof(Teensy_comm)) {
+	if (res != sizeof(teensy_comm)) {
 		fprintf(stderr, "Packet with bad size received.\n");
 
 		// Flush input buffer
@@ -242,8 +241,8 @@ int Host_comm_update( uint32_t            serial_nb,
 		return HOST_ERROR_BAD_PK_SZ;
 	}
   
-	// Return pointer to Teensy_comm structure
-	*comm = &Teensy_comm;
+	// Return pointer to teensy_comm structure
+	*comm = &teensy_comm;
 
 	return 0;
 }
@@ -335,17 +334,13 @@ int main( ) {
 		for (int j = 0; j < MOTOR_NUM; ++j) {
 			
 			// Speed of motors:
-			SendMotorData.rspeed[j] = comm -> rspeed[j];
+			SendMotorData.joint_vel[j] = comm -> joint_vel[j];
 			
 			// Angle of motors:
-			SendMotorData.angle[j] = comm -> angle[j];
+			SendMotorData.joint_pos[j] = comm -> joint_pos[j];
 			
-			// Torque of motors:
-			SendMotorData.torque[j] = comm -> torque[j];
-			// Desired speed:
-			SendMotorData.comd[j] = comm -> comd[j];
-			
-
+			// Current of motors:
+			SendMotorData.joint_cur[j] = comm -> joint_cur[j];
 			
 			SendMotorData.timestamps = comm -> timestamps;
 			

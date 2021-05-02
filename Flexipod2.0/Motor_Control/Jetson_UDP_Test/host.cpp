@@ -36,8 +36,8 @@ char                   Host_devname[PATH_MAX] = ""; 	// Serial port devname used
                             
 struct                 termios Host_oldtio;  		// Backup of initial tty configuration
 
-Teensycomm_struct_t    Teensy_comm;	// A data struct received from Teensy
-Jetson_comm_struct_t   Jetson_comm;		// A data struct sent to Teensy
+Teensycomm_struct_t    teensy_comm;	// A data struct received from Teensy
+Jetson_comm_struct_t   jetson_comm;		// A data struct sent to Teensy
 
 float 	               desire_speed[MOTOR_NUM];		// The deisred speed
 	
@@ -51,16 +51,15 @@ public:
 
 class MotorData {
 public:
-	float angle[MOTOR_NUM]; 		// Rotation angle, unit degree
-	float rspeed[MOTOR_NUM]; 		// Rotation speed, unit rpm
-	float torque[MOTOR_NUM]; 		// Rotation torque, unit N*m
-	float comd[MOTOR_NUM];  	// Desired speed, unit rpm
+	float joint_pos[MOTOR_NUM]; 		// Rotation angle, unit degree
+	float joint_vel[MOTOR_NUM]; 		// Rotation speed, unit rpm
+	float current[MOTOR_NUM]; 		// Rotation current, unit A
 	float acc[3];				// Acceleration of IMU, unit m/s^2
 	float gyr[3];				// Gyroscope, unit deg/s
 	float mag[3];
 	float eular[3];
 	float timestamps;
-	MSGPACK_DEFINE(angle, rspeed, torque, comd, acc, gyr, mag, eular, timestamps);
+	MSGPACK_DEFINE(joint_pos, joint_vel, torque, comd, acc, gyr, mag, eular, timestamps);
 };
 
 // set a object for sending UDP through msgpack
@@ -132,10 +131,10 @@ int main( ) {
 		for (int j = 0; j < MOTOR_NUM; ++j) {
 			
 			// Speed of motors:
-			SendMotorData.rspeed[j] = comm -> rspeed[j];
+			SendMotorData.joint_vel[j] = comm -> joint_vel[j];
 			
 			// Angle of motors:
-			SendMotorData.angle[j] = comm -> angle[j];
+			SendMotorData.joint_pos[j] = comm -> joint_pos[j];
 			
 			// Torque of motors:
 			SendMotorData.torque[j] = comm -> torque[j];

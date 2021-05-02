@@ -21,7 +21,7 @@ extern volatile float q[4];	// quaternion of sensor frame relative to auxiliary 
 //---------------------------------------------------------------------------------------------------
 // Function declarations
 
-void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat);
+void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float delta_t);
 
 #endif
 //=====================================================================================================
