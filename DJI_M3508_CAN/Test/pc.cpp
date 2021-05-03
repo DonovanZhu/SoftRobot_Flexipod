@@ -13,7 +13,7 @@
 using namespace std;
 
 // Using this class to hold data from RPi
-class MotorData {
+class MsgToPC {
 public:
 	double rpm[4];
 	MSGPACK_DEFINE(rpm);
@@ -72,7 +72,7 @@ void main()
 
 		msgpack::object obj = oh.get();
 		// you can convert object to UDPdata class directly
-		std::vector<MotorData> rvec;
+		std::vector<MsgToPC> rvec;
 		obj.convert(rvec);
 
 
