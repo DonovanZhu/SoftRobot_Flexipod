@@ -11,7 +11,7 @@
 #pragma comment (lib, "ws2_32.lib")
 
 using namespace std;
-class MotorData {
+class MsgToPC {
 public:
 	double angle[4];
 	double rpm[4];
@@ -67,7 +67,7 @@ void main()
 
 		msgpack::object obj = oh.get();
 		// you can convert object to UDPdata class directly
-		std::vector<MotorData> rvec;
+		std::vector<MsgToPC> rvec;
 		obj.convert(rvec);
 		
 		file << rvec[0].angle[0] << "\t" << rvec[0].angle[1] << "\t" << rvec[0].angle[2] << "\t" << rvec[0].angle[3] << "\t";

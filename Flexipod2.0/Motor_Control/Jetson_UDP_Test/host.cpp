@@ -49,7 +49,7 @@ public:
 };
 
 
-class MotorData {
+class MsgToPC {
 public:
 	float joint_pos[MOTOR_NUM]; 		// Rotation angle, unit degree
 	float joint_vel[MOTOR_NUM]; 		// Rotation speed, unit rpm
@@ -63,7 +63,7 @@ public:
 };
 
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 
 int main( ) {

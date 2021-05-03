@@ -73,7 +73,7 @@ public:
 
 
 // class for sending command to PC if using msgpack
-class MotorData {
+class MsgToPC {
 public:
 	double angle[4]; 	//degree
 	double rpm[4]; 		//rpm
@@ -84,7 +84,7 @@ public:
 };
 
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 
 //
@@ -350,7 +350,7 @@ int main( int argc, char *argv[] ) {
 	client_send.sin_port = htons(2000);
 	inet_pton(AF_INET, "192.168.0.67", &client_send.sin_addr);
 	bind(sock_send,(struct sockaddr *)&client_send,length_send);
-	vector<MotorData> send;
+	vector<MsgToPC> send;
 /******************************************************************/
 
 	int data_num, k, ret, j, pos;

@@ -65,7 +65,7 @@ public:
 	MSGPACK_DEFINE(rpm);
 };
 
-class MotorData {
+class MsgToPC {
 public:
 	double angle[4];
 	double rpm[4];
@@ -73,7 +73,7 @@ public:
 	MSGPACK_DEFINE(angle, rpm, torque);
 };
 
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 void CAN_control(int s)
 {
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 	client_send.sin_port = htons(2000);
 	inet_pton(AF_INET, "192.168.0.67", &client_send.sin_addr);
 	bind(sock_send,(struct sockaddr *)&client_send,length_send);
-	vector<MotorData> send;
+	vector<MsgToPC> send;
 /******************************************************************/
 	control_init(s);
 	

@@ -39,13 +39,13 @@ double desire_speed[NB_ESC] = {0.0, 0.0, 0.0, 0.0};		// The deisred speed
 //
 // Class for sending command to PC if using msgpack
 //
-class MotorData {
+class MsgToPC {
 public:
 	double rpm[NB_ESC];
 	MSGPACK_DEFINE(rpm);
 };
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 
 
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
 	inet_pton(AF_INET, "192.168.0.87", &client_send.sin_addr); // Address
 	bind(sock_send,(struct sockaddr *)&client_send,length_send);
 	
-	vector<MotorData> send;			// For holding the sent class
+	vector<MsgToPC> send;			// For holding the sent class
 /******************************************************************/
 
 

@@ -40,7 +40,7 @@ Jetson_comm_struct_t   jetson_comm;		// A data struct sent to Teensy
 float 	               desired_pos[MOTOR_NUM];		// The deisred speed
 	
 // Receiving the desired speed data by UDP and hold it in this class
-class MotorCommand {
+class MsgFromPC {
 public:
 	float 	robot_command[MOTOR_NUM];
 	MSGPACK_DEFINE(robot_command);
@@ -51,7 +51,7 @@ public:
 // Class for sending command to PC if using msgpack
 //
 
-class MotorData {
+class MsgToPC {
 public:
 	float joint_pos[MOTOR_NUM]; 		// Rotation angle, unit degree
 	float joint_vel[MOTOR_NUM]; 		// Rotation speed, unit rad/s
@@ -65,7 +65,7 @@ public:
 };
 
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 //
 // Get the device name from the device serial number
@@ -290,7 +290,7 @@ int main( ) {
 	server_recv.sin_port = htons(32001);	// Setting port of this program
 	bind(sock_recv,(struct sockaddr *)&server_recv,length_recv);
 	fromlen = sizeof(struct sockaddr_in);
-	MotorCommand recv;		// For holding the received class
+	MsgFromPC recv;		// For holding the received class
 /******************************************************************/
 	
 /*********************UDP_Sending_Initializing*********************/

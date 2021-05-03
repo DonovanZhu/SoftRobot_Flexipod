@@ -51,7 +51,7 @@ public:
 // Class for sending command to PC if using msgpack
 //
 
-class MotorData {
+class MsgToPC {
 public:
 	float joint_pos[MOTOR_NUM]; 		// Rotation angle, unit degree
 	float joint_vel[MOTOR_NUM]; 		// Rotation speed, unit rad/s
@@ -65,7 +65,7 @@ public:
 };
 
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 //
 // Get the device name from the device serial number

@@ -13,7 +13,7 @@
 using namespace std;
 
 // Using this class to hold data from RPi
-class MotorData {
+class MsgToPC {
 public:
 	double angle[4]; 	// Rotation angle, unit degree
 	double rpm[4]; 		// Rotation speed, unit rpm
@@ -71,7 +71,7 @@ void main()
 
 		msgpack::object obj = oh.get();
 		// you can convert object to UDPdata class directly
-		std::vector<MotorData> rvec;
+		std::vector<MsgToPC> rvec;
 		obj.convert(rvec);
 		
 		// Save data into txt file

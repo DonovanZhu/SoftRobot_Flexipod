@@ -13,7 +13,7 @@
 using namespace std;
 
 // Using this class to hold data from RPi
-class MotorData {
+class MsgToPC {
 public:
 	float joint_pos[MOTOR_NUM]; 	// Rotation angle, unit rad
 	float joint_vel[MOTOR_NUM]; 	// Rotation speed, unit rad/s
@@ -72,7 +72,7 @@ void main()
 
 		msgpack::object obj = oh.get();
 		// you can convert object to UDPdata class directly
-		MotorData recv;
+		MsgToPC recv;
 		obj.convert(recv);
 
 		// Save data into txt file

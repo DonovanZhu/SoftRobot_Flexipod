@@ -53,7 +53,7 @@ public:
 // Class for sending command to PC if using msgpack
 //
 
-class MotorData {
+class MsgToPC {
 public:
 	double angle[NB_ESC]; 		// Rotation angle, unit degree
 	double rpm[NB_ESC]; 		// Rotation speed, unit rpm
@@ -68,7 +68,7 @@ public:
 };
 
 // set a object for sending UDP through msgpack
-MotorData SendMotorData;
+MsgToPC SendMotorData;
 
 //
 // Get the device name from the device serial number
@@ -318,7 +318,7 @@ int main( ) {
 		client_send.sin_port = htons(123); // Port of aim program
 		inet_pton(AF_INET, "192.168.8.109", &client_send.sin_addr); // Address
 		bind(sock_send,(struct sockaddr *)&client_send,length_send);
-		vector<MotorData> send;			// For holding the sent class
+		vector<MsgToPC> send;			// For holding the sent class
 	/******************************************************************/
 	
 		Teensycomm_struct_t *comm;
